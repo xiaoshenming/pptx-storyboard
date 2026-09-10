@@ -1,6 +1,6 @@
 # PPT 分镜视频工程手册
 
-当前工程版本：`storyboard-video-v0.1.0`
+当前工程版本：`storyboard-video-v0.1.1`
 
 ## 结论
 
@@ -64,7 +64,7 @@ bun run demo -- --host 127.0.0.1 --port 4173
 - 功能版本：读取本目录的 `VERSION`；
 - Git 事实：`git rev-parse HEAD`；
 - 发布记录：本目录 `CHANGELOG.md`；
-- 本地恢复点：annotated tag `storyboard-video-v0.1.0`；
+- 本地恢复点：annotated tag `storyboard-video-v0.1.1`；
 - 离线备份：Git bundle 文件，使用 `git bundle verify <file>` 验证；
 - 运行任务：`/tmp/pptx-storyboard-jobs-v1/<job-id>/job.json`；
 - 输入合同：任务目录中的 `manifest.json`；
@@ -113,7 +113,7 @@ sha256sum <source.pptx> <output.mp4> <output.srt>
 查看版本内容：
 
 ```bash
-git show storyboard-video-v0.1.0
+git show storyboard-video-v0.1.1
 ```
 
 不要在有用户改动的工作区直接执行破坏性回退。需要恢复时，从 Git bundle 克隆

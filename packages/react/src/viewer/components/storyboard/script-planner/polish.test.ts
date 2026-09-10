@@ -89,6 +89,13 @@ describe('polishStoryboardScripts', () => {
 		}
 	});
 
+	it('removes layout spaces around standalone zero characters', () => {
+		expect(
+			polishStoryboardScripts([shot('a', '再看乘数末尾有几个 0，就在积的末尾添上几个 0')])[0]
+				.script,
+		).toBe('再看乘数末尾有几个零，就在积的末尾添上几个零。');
+	});
+
 	it('summarizes dense exercise prompts instead of reading every unfinished equation', () => {
 		expect(
 			polishStoryboardScripts([shot('a', '3乘3等于，30乘3等于，300乘3等于，3000乘3等于')])[0]

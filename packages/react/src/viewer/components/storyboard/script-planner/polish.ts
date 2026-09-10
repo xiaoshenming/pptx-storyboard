@@ -63,7 +63,8 @@ function naturalSentence(raw: string): string {
 		})
 		.replace(/乘数末尾有几个0/gu, '乘数末尾有几个零')
 		.replace(/添上几个0/gu, '添上几个零')
-		.replace(/(?<!\d)0(?!\d)/gu, '零');
+		.replace(/(?<!\d)0(?!\d)/gu, '零')
+		.replace(/\s*零\s*/gu, '零');
 	if (/等于\s*$/u.test(value)) {
 		value = `${value}多少？`;
 	}
