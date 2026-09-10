@@ -54,7 +54,7 @@ function naturalSentence(raw: string): string {
 		return `对于${method[1]}，我们再用${method[2]}来计算。`;
 	}
 	value = completeMultiplications(value)
-		.replace(/整十[、，]\s*整百\s*0\s*前面的数/gu, '整十数、整百数中零前面的数')
+		.replace(/整十数?[、，]\s*整百数?\s*0\s*前面的数/gu, '整十数、整百数中零前面的数')
 		.replace(/[？?][，,]\s*\d+[。.]?$/u, '？')
 		.replace(/^(.+?)[。，,]\s*课堂小结[。.]?$/u, '课堂小结：$1')
 		.replace(/^(.+?)[。，,]\s*活动要求[。.]?$/u, '活动要求：$1')

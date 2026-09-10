@@ -81,11 +81,12 @@ describe('polishStoryboardScripts', () => {
 	});
 
 	it('makes the zero-prefix rule natural to speak', () => {
-		expect(
-			polishStoryboardScripts([
-				shot('a', '先把整十、整百 0 前面的数与一位数相乘，再在积的末尾添上几个0'),
-			])[0].script,
-		).toBe('先把整十数、整百数中零前面的数与一位数相乘，再在积的末尾添上几个零。');
+		for (const source of ['整十、整百 0 前面的数', '整十数、整百数 0 前面的数']) {
+			expect(
+				polishStoryboardScripts([shot('a', `先把${source}与一位数相乘，再在积的末尾添上几个0`)])[0]
+					.script,
+			).toBe('先把整十数、整百数中零前面的数与一位数相乘，再在积的末尾添上几个零。');
+		}
 	});
 
 	it('summarizes dense exercise prompts instead of reading every unfinished equation', () => {

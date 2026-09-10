@@ -1,5 +1,8 @@
 # PPT 分镜视频本地服务
 
+完整的工程版本、自动化边界、验收和回滚说明见
+[`docs/storyboard-video/README.zh-CN.md`](../../../docs/storyboard-video/README.zh-CN.md)。
+
 这套服务负责把前端捕获的 PPT 关键状态，转换为可追踪的后台视频任务：
 
 1. 浏览器并行捕获每个分镜的 1920×1080 PNG。
