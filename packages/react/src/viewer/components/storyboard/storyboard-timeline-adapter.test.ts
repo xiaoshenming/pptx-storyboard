@@ -296,9 +296,9 @@ describe('animation labels', () => {
 		);
 		expect(animationTargetLabel('text-1', [textElement('text-1', '勾股定理')])).toBe('勾股定理');
 		expect(animationTargetLabel('missing-1', [textElement('text-1', '勾股定理')])).toBe(
-			'元素 missing-1',
+			'对象 missing-1',
 		);
-		expect(animationTargetLabel('a-very-long-target-id', [])).toBe('元素 a-very-long-…');
+		expect(animationTargetLabel('a-very-long-target-id', [])).toBe('对象 a-very-long-…');
 	});
 });
 
@@ -351,7 +351,7 @@ describe('animation event labels at group level', () => {
 			'withPrevious',
 		]);
 		expect(groups[0].events[0].targetLabel).toBe('勾股定理');
-		// A target without a matching element falls back to an id digest.
-		expect(groups[0].events[1].targetLabel).toBe('元素 one');
+		// A target without a matching element falls back to a readable digest.
+		expect(groups[0].events[1].targetLabel).toBe('对象 one');
 	});
 });

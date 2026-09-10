@@ -73,62 +73,109 @@ function withPlannedScript(slide: PptxSlide, shot: StoryboardShot): StoryboardSh
 	};
 }
 
+function buildSlideStoryboardShots(
+	slide: PptxSlide,
+	slideIndex: number,
+	options: { collapseAnimations?: boolean },
+): StoryboardShot[] {
+	const animationGroups = buildStoryboardAnimationGroups(slide, slideIndex);
+	if (animationGroups.length === 0 || options.collapseAnimations) {
+		return polishStoryboardScripts([
+			withPlannedScript(slide, {
+				id: `slide-${slideIndex + 1}-static`,
+				slideIndex,
+				kind: 'static' as const,
+				label: `第 ${slideIndex + 1} 页`,
+				effectLabel: '静态页面',
+				durationMs: 5000,
+				script: '',
+				subtitlesEnabled: true,
+			}),
+		]);
+	}
+	const initial: StoryboardShot = {
+		id: `slide-${slideIndex + 1}-initial`,
+		slideIndex,
+		kind: 'initial',
+		label: `第 ${slideIndex + 1} 页 · 初始`,
+		effectLabel: '页面进入',
+		durationMs: 2500,
+		script: '',
+		hiddenElementIds: initialHiddenElementIds(slide),
+		subtitlesEnabled: true,
+	};
+	return polishStoryboardScripts([
+		withPlannedScript(slide, initial),
+		...animationGroups.map((group, groupIndex) => {
+			const animationEvents = group.events;
+			return withPlannedScript(slide, {
+				id: `slide-${slideIndex + 1}-animation-group-${groupIndex + 1}`,
+				slideIndex,
+				animationIndex: group.animationIndices?.[0],
+				animationIndices: group.animationIndices,
+				clickGroupIndex: groupIndex,
+				parallelGroupId: `${slide.id}:${group.id}`,
+				animationEvents,
+				hiddenElementIds: group.hiddenElementIds,
+				kind: 'animation' as const,
+				label: `第 ${slideIndex + 1} 页 · 动画组 ${groupIndex + 1}`,
+				effectLabel: group.effectLabel,
+				// Placeholder pacing for voiced shots; retimeSilentStoryboardShots
+				// compresses the silent ones once the final scripts are known.
+				durationMs: Math.max(
+					1800,
+					...animationEvents.map((event) => event.startOffsetMs + event.durationMs + 1000),
+				),
+				script: '',
+				subtitlesEnabled: true,
+			});
+		}),
+	]);
+}
+
 export function buildStoryboardShots(
 	slides: PptxSlide[],
 	options: { collapseAnimations?: boolean } = {},
 ): StoryboardShot[] {
-	return slides.flatMap((slide, slideIndex) => {
-		const animationGroups = buildStoryboardAnimationGroups(slide, slideIndex);
-		if (animationGroups.length === 0 || options.collapseAnimations) {
-			return polishStoryboardScripts([
-				withPlannedScript(slide, {
-					id: `slide-${slideIndex + 1}-static`,
-					slideIndex,
-					kind: 'static' as const,
-					label: `第 ${slideIndex + 1} 页`,
-					effectLabel: '静态页面',
-					durationMs: 5000,
-					script: '',
-					subtitlesEnabled: true,
-				}),
-			]);
+	return retimeSilentStoryboardShots(
+		slides.flatMap((slide, slideIndex) => buildSlideStoryboardShots(slide, slideIndex, options)),
+	);
+}
+
+// Silent-pacing policy (real-deck calibration: 19 pages, 127 shots, 83 voiced).
+// Exit-only groups read as "cleared off stage", so they need the least dwell
+// time; entrance/emphasis reveals must stay up about a second so students can
+// read the answer that just appeared. Voiced shots keep their narration anchor
+// and are never retimed here.
+const SILENT_EXIT_FLOOR_MS = 900;
+const SILENT_REVEAL_FLOOR_MS = 1300;
+const SILENT_TAIL_MS = 300;
+
+function silentShotFloorMs(events: StoryboardAnimationEvent[]): number {
+	const allExit = events.length > 0 && events.every((event) => event.presetClass === 'exit');
+	return allExit ? SILENT_EXIT_FLOOR_MS : SILENT_REVEAL_FLOOR_MS;
+}
+
+/**
+ * Compresses silent animation shots once their final scripts are known
+ * (after withPlannedScript + polishStoryboardScripts, which may blank a
+ * planned script through dedup). A shot counts as silent with the same
+ * `script.trim()` rule the timeline adapter and narration normalization use.
+ * The per-event startOffsetMs/durationMs come from the deck's native
+ * animations and are untouched: only the floor and the tail after the last
+ * event end are compressed. Voiced shots keep max(1800, lastEnd + 1000).
+ */
+export function retimeSilentStoryboardShots(shots: StoryboardShot[]): StoryboardShot[] {
+	return shots.map((shot) => {
+		const events = shot.animationEvents ?? [];
+		if (shot.kind !== 'animation' || shot.script.trim() || events.length === 0) {
+			return shot;
 		}
-		const initial: StoryboardShot = {
-			id: `slide-${slideIndex + 1}-initial`,
-			slideIndex,
-			kind: 'initial',
-			label: `第 ${slideIndex + 1} 页 · 初始`,
-			effectLabel: '页面进入',
-			durationMs: 2500,
-			script: '',
-			hiddenElementIds: initialHiddenElementIds(slide),
-			subtitlesEnabled: true,
-		};
-		return polishStoryboardScripts([
-			withPlannedScript(slide, initial),
-			...animationGroups.map((group, groupIndex) => {
-				const animationEvents = group.events;
-				return withPlannedScript(slide, {
-					id: `slide-${slideIndex + 1}-animation-group-${groupIndex + 1}`,
-					slideIndex,
-					animationIndex: group.animationIndices?.[0],
-					animationIndices: group.animationIndices,
-					clickGroupIndex: groupIndex,
-					parallelGroupId: `${slide.id}:${group.id}`,
-					animationEvents,
-					hiddenElementIds: group.hiddenElementIds,
-					kind: 'animation' as const,
-					label: `第 ${slideIndex + 1} 页 · 动画组 ${groupIndex + 1}`,
-					effectLabel: group.effectLabel,
-					durationMs: Math.max(
-						1800,
-						...animationEvents.map((event) => event.startOffsetMs + event.durationMs + 1000),
-					),
-					script: '',
-					subtitlesEnabled: true,
-				});
-			}),
-		]);
+		const lastEventEndMs = Math.max(
+			...events.map((event) => event.startOffsetMs + event.durationMs),
+		);
+		const durationMs = Math.max(silentShotFloorMs(events), lastEventEndMs + SILENT_TAIL_MS);
+		return durationMs === shot.durationMs ? shot : { ...shot, durationMs };
 	});
 }
 

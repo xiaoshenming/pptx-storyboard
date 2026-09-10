@@ -138,10 +138,18 @@ describe('createTargetLabelResolver', () => {
 		expect(resolve('e1')).toBe(`${long.slice(0, 12)}…`);
 	});
 
-	it('falls back to a digest label for textless or missing elements', () => {
+	it('falls back to typed or digest labels for textless or missing elements', () => {
 		const resolve = createTargetLabelResolver([[textElement('e2', '   ')]]);
-		expect(resolve('e2')).toBe('元素 e2');
-		expect(resolve('missing')).toBe('元素 missing');
+		expect(resolve('e2')).toBe('对象 e2');
+		expect(resolve('missing')).toBe('对象 missing');
+	});
+
+	it('labels textless template elements by kind and unknown targets by readable tail', () => {
+		const resolve = createTargetLabelResolver([
+			[{ id: 'ppt/slides/slide1.xml-shape-1', type: 'shape' } as PptxElement],
+		]);
+		expect(resolve('ppt/slides/slide1.xml-shape-1')).toBe('形状 shape-1');
+		expect(resolve('ppt/slides/slide3.xml-shape-9')).toBe('对象 shape-9');
 	});
 
 	it('prefers the first group on element id clashes across slides', () => {
