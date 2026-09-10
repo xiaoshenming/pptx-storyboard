@@ -1,6 +1,9 @@
 import type { PptxSlide } from 'pptx-viewer-core';
 
 import { compileSlideAnimationExport } from './animation-export';
+import { animationTargetLabel } from './storyboard-animation-labels';
+
+export type StoryboardAnimationTrigger = 'onClick' | 'withPrevious' | 'afterPrevious';
 
 export interface StoryboardAnimationEvent {
 	id: string;
@@ -8,8 +11,12 @@ export interface StoryboardAnimationEvent {
 	startOffsetMs: number;
 	durationMs: number;
 	presetClass?: 'entr' | 'exit' | 'emph' | 'path';
+	/** How the event starts relative to its click group; defaults to 'onClick'. */
+	trigger?: StoryboardAnimationTrigger;
 	keyframeName?: string;
 	cssAnimation?: string;
+	/** Element text summary for timeline cards, resolved when the group is built. */
+	targetLabel?: string;
 }
 
 export interface StoryboardAnimationGroup {
@@ -29,11 +36,17 @@ function nativeGroups(slide: PptxSlide, slideIndex: number): StoryboardAnimation
 				return {
 					id: `slide-${slideIndex + 1}-group-${groupIndex + 1}-step-${stepIndex + 1}`,
 					targetId: step.elementId,
+					// The compiled click group no longer carries per-step triggers: the
+					// first step owns the click and later steps play alongside it. This
+					// is an approximation of native click-group semantics, not parsed
+					// source data.
+					trigger: stepIndex === 0 ? 'onClick' : 'withPrevious',
 					startOffsetMs: step.delayMs,
 					durationMs: step.durationMs,
 					presetClass: step.presetClass,
 					keyframeName: step.keyframeName,
 					cssAnimation: step.cssAnimation,
+					targetLabel: animationTargetLabel(step.elementId, slide.elements),
 				};
 			});
 		const classes = new Set(events.map((event) => event.presetClass));
@@ -68,6 +81,15 @@ function editorPreset(animation: EditorAnimation): StoryboardAnimationEvent['pre
 		return 'emph';
 	}
 	return animation.motionPath ? 'path' : undefined;
+}
+
+function editorTrigger(animation: EditorAnimation): StoryboardAnimationTrigger {
+	// Triggers outside the click-group trio (onShapeClick, onHover, afterDelay,
+	// undefined) each start their own click group, so they read as 'onClick'.
+	if (animation.trigger === 'withPrevious' || animation.trigger === 'afterPrevious') {
+		return animation.trigger;
+	}
+	return 'onClick';
 }
 
 function editorGroups(slide: PptxSlide, slideIndex: number): StoryboardAnimationGroup[] {
@@ -107,6 +129,8 @@ function editorGroups(slide: PptxSlide, slideIndex: number): StoryboardAnimation
 				startOffsetMs,
 				durationMs: animation.durationMs ?? 600,
 				presetClass,
+				trigger: editorTrigger(animation),
+				targetLabel: animationTargetLabel(animation.elementId, slide.elements),
 			};
 		});
 		return {

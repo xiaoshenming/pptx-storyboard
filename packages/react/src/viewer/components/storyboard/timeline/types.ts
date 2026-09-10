@@ -1,3 +1,5 @@
+import type { TimelineBinding } from './binding';
+
 export type TimelineTrackKind = 'visual' | 'animation' | 'narration' | 'subtitle';
 
 export type TimelineCollisionStrategy = 'allow' | 'reject' | 'overwrite' | 'ripple';
@@ -19,6 +21,7 @@ export interface TimelineClip {
 	sourceId?: string;
 	parallelGroupId?: string;
 	script?: TimelineScriptFragment;
+	binding?: TimelineBinding;
 	metadata?: Readonly<Record<string, unknown>>;
 }
 

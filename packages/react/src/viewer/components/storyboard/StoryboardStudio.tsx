@@ -1,8 +1,13 @@
 import type { PptxElement, PptxSlide } from 'pptx-viewer-core';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { CanvasSize } from '../../types';
 import { MultiTrackTimeline } from './MultiTrackTimeline';
+import {
+	animationClipsOf,
+	createTargetLabelResolver,
+	narrationClipForShot,
+} from './playback-model';
 import { runStoryboardExport } from './storyboard-export-workflow';
 import { cancelStoryboardRenderJob } from './storyboard-job-client';
 import type { StoryboardJobProgress } from './storyboard-job-client';
@@ -10,11 +15,8 @@ import { formatStoryboardTime, storyboardSlideForShot } from './storyboard-model
 import type { StoryboardShot } from './storyboard-model';
 import { loadStoryboardProject, storyboardProjectId } from './storyboard-project-store';
 import {
-	applyNarrationDuration,
 	buildStoryboardTimeline,
 	normalizeNarrationDurations,
-	reconcileNarrationTiming,
-	updateTimelineScript,
 } from './storyboard-timeline-adapter';
 import { StoryboardJobStatus } from './StoryboardJobStatus';
 import { StoryboardPageRail } from './StoryboardPageRail';
@@ -22,11 +24,15 @@ import { StoryboardPreview } from './StoryboardPreview';
 import { StoryboardScriptPanel } from './StoryboardScriptPanel';
 import { StoryboardStudioHeader } from './StoryboardStudioHeader';
 import type { TimelineModel } from './timeline';
-import { estimateScriptDuration } from './timeline';
 import { useStoryboardAutosave } from './use-storyboard-autosave';
 import { isStoryboardJobActive, useStoryboardJobRecovery } from './use-storyboard-job-recovery';
-import { useStoryboardPlayback } from './use-storyboard-playback';
+import {
+	useStoryboardPlayback,
+	useStoryboardPlaybackKeys,
+	useStoryboardPlaybackSelection,
+} from './use-storyboard-playback';
 import { useStoryboardShots } from './use-storyboard-shots';
+import { useStoryboardTimelineEdits } from './use-storyboard-timeline-edits';
 
 interface StoryboardStudioProps {
 	fileName?: string;
@@ -55,16 +61,30 @@ export function StoryboardStudio({
 		[fileName, generatedShots],
 	);
 	const restored = useMemo(() => loadStoryboardProject(projectId), [projectId]);
+	// Target labels resolve once per slides/template change; the restore effect
+	// reads them through a ref so a new lookup alone never rebuilds the timeline.
+	const resolveTargetLabel = useMemo(
+		() =>
+			createTargetLabelResolver([
+				...slides.map((slide) => slide.elements),
+				...Object.values(templateElementsBySlideId),
+			]),
+		[slides, templateElementsBySlideId],
+	);
+	const labelResolverRef = useRef(resolveTargetLabel);
+	labelResolverRef.current = resolveTargetLabel;
 	const [shots, setShots] = useState<StoryboardShot[]>(restored?.shots ?? generatedShots);
 	const [timeline, setTimeline] = useState<TimelineModel>(() =>
 		restored
 			? normalizeNarrationDurations(restored.timeline, restored.shots)
-			: buildStoryboardTimeline(generatedShots),
+			: buildStoryboardTimeline(generatedShots, { resolveTargetLabel }),
 	);
 	const [selectedShotId, setSelectedShotId] = useState(generatedShots[0]?.id ?? '');
-	const [isPlaying, setIsPlaying] = useState(false);
+	const [selectedClipId, setSelectedClipId] = useState<string | undefined>(undefined);
 	const [exporting, setExporting] = useState(false);
 	const [exportStatus, setExportStatus] = useState('');
+	const disposedRef = useRef(false);
+	useEffect(() => () => void (disposedRef.current = true), []);
 	const [renderJob, setRenderJob] = useState<StoryboardJobProgress | null>(
 		restored?.lastJob ?? null,
 	);
@@ -74,6 +94,32 @@ export function StoryboardStudio({
 		Record<string, { url: string; durationMs: number; taskId: string }>
 	>({});
 	useStoryboardJobRecovery(jobEndpoint, renderJob, setRenderJob);
+
+	// The playhead owns time: selection follows it, so this callback never
+	// seeks, or the auto shot advance during playback would loop.
+	const handleActiveShotChange = (shotId: string) => {
+		setSelectedShotId(shotId);
+		setSelectedClipId(undefined);
+	};
+	const playback = useStoryboardPlayback({ timeline, onActiveShotChange: handleActiveShotChange });
+	const playbackRef = useRef(playback);
+	playbackRef.current = playback;
+	useStoryboardPlaybackKeys(playback, timeline);
+	const { playheadMs, isPlaying, seek, togglePlay, stop } = playback;
+	const { selectShot, selectClip, playAll } = useStoryboardPlaybackSelection({
+		timeline,
+		controller: playback,
+		onShotSelected: setSelectedShotId,
+		onClipSelected: setSelectedClipId,
+	});
+	const { applyTimelineEdit, applyNarrationPreview, changeNarrationBinding, updateShot } =
+		useStoryboardTimelineEdits({
+			timeline,
+			selectedShotId,
+			generatedShots,
+			setTimeline,
+			setShots,
+		});
 
 	useEffect(() => {
 		const saved = loadStoryboardProject(projectId);
@@ -87,79 +133,33 @@ export function StoryboardStudio({
 		setTimeline(
 			compatible && saved
 				? normalizeNarrationDurations(saved.timeline, saved.shots)
-				: buildStoryboardTimeline(generatedShots),
+				: buildStoryboardTimeline(generatedShots, { resolveTargetLabel: labelResolverRef.current }),
 		);
 		setRenderJob(compatible && saved ? (saved.lastJob ?? null) : null);
+		playbackRef.current.stop();
+		playbackRef.current.seek(0);
 	}, [generatedShots, projectId]);
-	const saveStatus = useStoryboardAutosave({
+	const { saveStatus, flush, getBindingRevision } = useStoryboardAutosave({
 		projectId,
 		fileName: fileName || 'presentation.pptx',
 		shots,
 		timeline,
 		lastJob: renderJob,
 	});
-	useStoryboardPlayback(
-		isPlaying,
-		selectedShotId,
-		shots,
-		timeline,
-		setSelectedShotId,
-		setIsPlaying,
-	);
 
 	const selectedShot = shots.find((shot) => shot.id === selectedShotId) ?? shots[0];
 	const sourceSlide = selectedShot ? slides[selectedShot.slideIndex] : slides[0];
 	const selectedSlide =
 		selectedShot && sourceSlide ? storyboardSlideForShot(sourceSlide, selectedShot) : sourceSlide;
 
-	const updateShot = (shotId: string, patch: Partial<StoryboardShot>) => {
-		const baseDuration = generatedShots.find((shot) => shot.id === shotId)?.durationMs ?? 0;
-		const estimatedDuration =
-			typeof patch.script === 'string'
-				? Math.max(baseDuration, estimateScriptDuration(patch.script) + 250)
-				: undefined;
-		setShots((current) =>
-			current.map((shot) =>
-				shot.id === shotId
-					? {
-							...shot,
-							...patch,
-							durationMs: estimatedDuration ?? shot.durationMs,
-						}
-					: shot,
-			),
-		);
-		if (typeof patch.script === 'string') {
-			setTimeline((current) =>
-				applyNarrationDuration(
-					updateTimelineScript(current, shotId, patch.script!),
-					shotId,
-					estimatedDuration!,
-				),
-			);
-		}
-	};
-	const handleTimelineChange = (next: TimelineModel) => {
-		const reconciled = reconcileNarrationTiming(next);
-		setTimeline(reconciled);
-		const visual = reconciled.tracks.find((track) => track.kind === 'visual');
-		if (!visual) {
-			return;
-		}
-		setShots((current) =>
-			current.map((shot) => {
-				const clip = visual.clips.find((item) => item.sourceId === shot.id);
-				return clip ? { ...shot, durationMs: clip.durationMs } : shot;
-			}),
-		);
-	};
 	const generateVideo = async () => {
 		if (!selectedShot || exporting || !jobEndpoint) {
 			return;
 		}
-		setIsPlaying(false);
+		stop();
 		setExporting(true);
 		try {
+			const flushed = flush(); // 冲刷防抖窗口：revision 回执与导出的绑定模型同批。
 			await runStoryboardExport({
 				endpoint: jobEndpoint,
 				fileName: fileName || 'presentation.pptx',
@@ -170,6 +170,8 @@ export function StoryboardStudio({
 				voiceType,
 				speed: voiceSpeed,
 				timeline,
+				bindingRevision: flushed?.bindingRevision ?? getBindingRevision(),
+				isDisposed: () => disposedRef.current,
 				onJob: setRenderJob,
 				onStatus: setExportStatus,
 			});
@@ -180,10 +182,7 @@ export function StoryboardStudio({
 		}
 	};
 	const cancelVideo = async () => {
-		if (!jobEndpoint || !renderJob) {
-			return;
-		}
-		if (!renderJob.jobToken) {
+		if (!jobEndpoint || !renderJob || !renderJob.jobToken) {
 			return;
 		}
 		await cancelStoryboardRenderJob(jobEndpoint, renderJob.id, renderJob.jobToken);
@@ -221,7 +220,7 @@ export function StoryboardStudio({
 					selectedShot={selectedShot}
 					templateElementsBySlideId={templateElementsBySlideId}
 					canvasSize={canvasSize}
-					onSelectShot={setSelectedShotId}
+					onSelectShot={selectShot}
 				/>
 
 				<div className='flex min-w-0 flex-1 flex-col'>
@@ -232,11 +231,15 @@ export function StoryboardStudio({
 								templateElements={templateElementsBySlideId[selectedSlide.id] ?? []}
 								canvasSize={canvasSize}
 								isPlaying={isPlaying}
-								onTogglePlay={() => setIsPlaying((value) => !value)}
+								onTogglePlay={togglePlay}
 								onRestart={() => {
-									setSelectedShotId(shots[0]?.id ?? '');
-									setIsPlaying(true);
+									seek(0);
+									if (!isPlaying) {
+										togglePlay();
+									}
 								}}
+								progressMs={playheadMs}
+								durationMs={timeline.durationMs}
 							/>
 						)}
 						{sourceSlide && selectedShot && (
@@ -248,6 +251,9 @@ export function StoryboardStudio({
 								voiceType={voiceType}
 								speed={voiceSpeed}
 								audioPreview={audioPreviews[selectedShot.id]}
+								narrationClip={narrationClipForShot(timeline, selectedShot.id)}
+								animationClips={animationClipsOf(timeline)}
+								onBindingChange={changeNarrationBinding}
 								onVoiceTypeChange={(value) => {
 									setVoiceType(value);
 									setAudioPreviews({});
@@ -269,9 +275,7 @@ export function StoryboardStudio({
 								}
 								onAudioPreview={(preview) => {
 									setAudioPreviews((current) => ({ ...current, [selectedShot.id]: preview }));
-									setTimeline((current) =>
-										applyNarrationDuration(current, selectedShot.id, preview.durationMs),
-									);
+									applyNarrationPreview(selectedShot.id, preview.durationMs);
 								}}
 							/>
 						)}
@@ -279,12 +283,13 @@ export function StoryboardStudio({
 					<MultiTrackTimeline
 						timeline={timeline}
 						selectedSourceId={selectedShot?.id}
-						onChange={handleTimelineChange}
-						onSelectSource={setSelectedShotId}
-						onPlayAll={() => {
-							setSelectedShotId(shots[0]?.id ?? '');
-							setIsPlaying(true);
-						}}
+						selectedClipId={selectedClipId}
+						playheadMs={playheadMs}
+						onChange={applyTimelineEdit}
+						onSelectSource={selectShot}
+						onSelectClip={selectClip}
+						onSeek={seek}
+						onPlayAll={() => playAll(shots[0]?.id ?? '')}
 					/>
 				</div>
 			</div>

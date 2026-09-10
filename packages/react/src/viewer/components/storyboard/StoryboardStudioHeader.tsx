@@ -1,13 +1,15 @@
 import React from 'react';
 import { LuArrowLeft, LuClapperboard, LuFilm, LuLoaderCircle } from 'react-icons/lu';
 
+import type { StoryboardSaveStatus } from './use-storyboard-autosave';
+
 interface StoryboardStudioHeaderProps {
 	fileName?: string;
 	projectId: string;
 	pageCount: number;
 	shotCount: number;
 	durationLabel: string;
-	saveStatus: 'saving' | 'saved';
+	saveStatus: StoryboardSaveStatus;
 	exportStatus: string;
 	exporting: boolean;
 	canGenerate: boolean;
@@ -57,8 +59,13 @@ export function StoryboardStudioHeader({
 				<span>预计 {durationLabel}</span>
 			</div>
 			<div className='ml-auto flex items-center gap-3'>
-				<span className='hidden text-xs text-emerald-600 sm:inline'>
-					● {saveStatus === 'saved' ? '已保存' : '保存中'} · {projectId}
+				<span
+					className={`hidden text-xs sm:inline ${
+						saveStatus === 'error' ? 'text-rose-600' : 'text-emerald-600'
+					}`}
+				>
+					● {saveStatus === 'saved' ? '已保存' : saveStatus === 'error' ? '保存失败' : '保存中'} ·{' '}
+					{projectId}
 				</span>
 				{exportStatus && (
 					<span className='hidden max-w-52 truncate text-xs text-slate-500 lg:inline'>

@@ -52,7 +52,5 @@ export function formatTimelineTime(timeMs: number, frameRate = DEFAULT_FRAME_RAT
 	const seconds = totalSeconds % 60;
 	const minutes = Math.floor(totalSeconds / 60) % 60;
 	const hours = Math.floor(totalSeconds / 3600);
-	return [hours, minutes, seconds, frames]
-		.map((value, index) => String(value).padStart(index === 0 ? 2 : 2, '0'))
-		.join(':');
+	return [hours, minutes, seconds, frames].map((value) => String(value).padStart(2, '0')).join(':');
 }

@@ -1,88 +1,178 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { LuAudioLines, LuCaptions, LuFilm, LuLockKeyhole, LuSparkles } from 'react-icons/lu';
+import React, { useRef, useState } from 'react';
+import { LuLockKeyhole } from 'react-icons/lu';
 
-import { cn } from '../../utils';
-import { moveTimelineClip, resizeTimelineClip, millisecondsToPixels } from './timeline';
-import type { TimelineClip, TimelineModel, TimelineTrackKind } from './timeline';
-
-const TRACK_META: Record<TimelineTrackKind, { color: string; icon: React.ReactNode }> = {
-	visual: { color: 'bg-sky-500/90', icon: <LuFilm /> },
-	animation: { color: 'bg-violet-500/90', icon: <LuSparkles /> },
-	narration: { color: 'bg-emerald-500/90', icon: <LuAudioLines /> },
-	subtitle: { color: 'bg-amber-500/90', icon: <LuCaptions /> },
-};
+import { BindingOverlay, PlayheadLine, TimelineRuler } from './BindingOverlay';
+import { toggleNarrationBindingLock } from './narration-binding-actions';
+import {
+	detachTimelineBinding,
+	findTimelineClip,
+	millisecondsToPixels,
+	rebindTimelineClip,
+} from './timeline';
+import type { TimelineClip, TimelineEditResult, TimelineModel } from './timeline';
+import {
+	beginTimelineDrag,
+	clipAfterEdit,
+	dragPassedMoveThreshold,
+	planMoveFrame,
+	planNarrationMoveFrame,
+	planResizeFrame,
+	resolveNarrationRelease,
+	rollbackNarrationDrag,
+	withDragClientX,
+} from './timeline-drag-controller';
+import type { TimelineDragState } from './timeline-drag-controller';
+import { KIND_ICON, TimelineTrackRow } from './TimelineClipCard';
+import { TimelineClipContextMenu } from './TimelineClipContextMenu';
 
 interface MultiTrackTimelineProps {
 	timeline: TimelineModel;
 	selectedSourceId?: string;
+	selectedClipId?: string;
+	playheadMs?: number;
 	onChange: (timeline: TimelineModel) => void;
 	onSelectSource: (sourceId: string) => void;
+	onSelectClip?: (clipId: string | undefined) => void;
+	onSeek?: (playheadMs: number) => void;
 	onPlayAll: () => void;
-}
-
-interface DragState {
-	clip: TimelineClip;
-	clientX: number;
-	mode: 'move' | 'resize-end';
 }
 
 export function MultiTrackTimeline({
 	timeline,
 	selectedSourceId,
+	selectedClipId,
+	playheadMs,
 	onChange,
 	onSelectSource,
+	onSelectClip,
+	onSeek,
 	onPlayAll,
 }: MultiTrackTimelineProps): React.ReactElement {
-	const scrollerRef = useRef<HTMLDivElement>(null);
 	const [pixelsPerSecond, setPixelsPerSecond] = useState(80);
-	const [drag, setDrag] = useState<DragState | null>(null);
-	const canvasWidth = Math.max(
-		900,
-		millisecondsToPixels(timeline.durationMs + 2000, pixelsPerSecond),
-	);
-	const ticks = useMemo(
-		() => Array.from({ length: Math.ceil(timeline.durationMs / 1000) + 2 }, (_, index) => index),
-		[timeline.durationMs],
-	);
+	const [drag, setDrag] = useState<TimelineDragState | null>(null);
+	const [menu, setMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
+	const [hoveredClipId, setHoveredClipId] = useState<string | undefined>(undefined);
+	const [magnetAnchorId, setMagnetAnchorId] = useState<string | null>(null);
+	// 刚结束一次真实拖拽（moved）时吞掉紧随的 click，避免落点误触发选中/seek。
+	const dragJustMovedRef = useRef(false);
+	const spanMs = timeline.durationMs + 2000;
+	const canvasWidth = Math.max(900, millisecondsToPixels(spanMs, pixelsPerSecond));
+	const menuClip = menu ? findTimelineClip(timeline, menu.clipId)?.clip : undefined;
+	const overlayProps = { timeline, pixelsPerSecond };
+	// 拖拽期间悬置了绑定的旁白，未磁吸时给出"已解绑"预告。
+	// 未过移动阈值的抖动不会提交任何帧，此时不预告，避免徽章闪烁误导。
+	const detachingClipId =
+		drag &&
+		drag.mode === 'move' &&
+		drag.moved &&
+		drag.clip.kind === 'narration' &&
+		drag.originBinding &&
+		!magnetAnchorId
+			? drag.clipId
+			: undefined;
 
-	const applyPointer = (event: React.PointerEvent) => {
+	const applyEdit = (result: TimelineEditResult) => {
+		if (result.accepted) {
+			onChange(result.timeline);
+		}
+	};
+
+	const commitFrame = (result: TimelineEditResult, clientX: number) => {
+		onChange(result.timeline);
 		if (!drag) {
 			return;
 		}
-		const deltaMs = ((event.clientX - drag.clientX) / pixelsPerSecond) * 1000;
-		const proposed =
-			drag.mode === 'move'
-				? drag.clip.startMs + deltaMs
-				: drag.clip.startMs + drag.clip.durationMs + deltaMs;
-		const snap = { enabled: true, thresholdPx: 8, pixelsPerSecond, gridMs: 100 };
-		const result =
-			drag.mode === 'move'
-				? moveTimelineClip(timeline, drag.clip.id, proposed, {
-						snap,
-						collisionStrategy: drag.clip.kind === 'narration' ? 'allow' : 'ripple',
-						moveParallelGroup: true,
-					})
-				: resizeTimelineClip(timeline, drag.clip.id, 'end', proposed, {
-						snap,
-						minimumDurationMs: 200,
-						collisionStrategy: drag.clip.kind === 'narration' ? 'allow' : 'ripple',
-					});
-		if (result.accepted) {
-			onChange(result.timeline);
-			const updated = result.timeline.tracks
-				.flatMap((track) => track.clips)
-				.find((clip) => clip.id === drag.clip.id);
-			if (updated) {
-				setDrag({ ...drag, clip: updated, clientX: event.clientX });
-			}
+		const clip = clipAfterEdit(result, drag.clipId) ?? drag.clip;
+		setDrag(withDragClientX({ ...drag, clip }, clientX));
+	};
+
+	const handlePointerMove = (event: React.PointerEvent) => {
+		if (!drag) {
+			return;
 		}
+		const clientX = event.clientX;
+		// P1 帧 gate：未过拖拽阈值的抖动直接 return，不产生任何 onChange，
+		// 避免受控父级采纳中间态后绑定被静默丢弃（plan* 内同样有 gate）。
+		if (!dragPassedMoveThreshold(drag, clientX)) {
+			return;
+		}
+		if (drag.mode === 'resize-end') {
+			const result = planResizeFrame({ timeline, drag, clientX, pixelsPerSecond });
+			if (result) {
+				commitFrame(result, clientX);
+			}
+			return;
+		}
+		if (drag.clip.kind === 'narration') {
+			// 磁吸：候选锚点在阈值内则吸附，松手时按吸附决策绑定。
+			const frame = planNarrationMoveFrame({ timeline, drag, clientX, pixelsPerSecond });
+			if (!frame) {
+				return;
+			}
+			setMagnetAnchorId(frame.magnetAnchorId);
+			commitFrame(frame.result, clientX);
+			return;
+		}
+		const result = planMoveFrame({ timeline, drag, clientX, pixelsPerSecond });
+		if (result) {
+			commitFrame(result, clientX);
+		}
+	};
+
+	const interactions = {
+		onClick: (clip: TimelineClip) => {
+			if (dragJustMovedRef.current) {
+				dragJustMovedRef.current = false;
+				return;
+			}
+			onSelectClip?.(selectedClipId === clip.id ? undefined : clip.id);
+			if (clip.sourceId) {
+				onSelectSource(clip.sourceId);
+			}
+			// 选中动画或旁白时把播放头带到片段起点，便于检查音画。
+			if (onSeek && (clip.kind === 'animation' || clip.kind === 'narration')) {
+				onSeek(clip.startMs);
+			}
+		},
+		onPointerDown: (
+			clip: TimelineClip,
+			trackLocked: boolean | undefined,
+			event: React.PointerEvent<HTMLButtonElement>,
+		) => {
+			// 右键/中键属于 context menu 与滚动，不启动拖拽。
+			if (event.button !== 0) {
+				return;
+			}
+			// 绑定锁定的旁白禁止拖动。
+			if (trackLocked || (clip.kind === 'narration' && clip.binding?.locked)) {
+				return;
+			}
+			event.currentTarget.setPointerCapture(event.pointerId);
+			dragJustMovedRef.current = false;
+			setDrag(beginTimelineDrag(clip, 'move', event.clientX));
+		},
+		onContextMenu: (clip: TimelineClip, event: React.MouseEvent<HTMLButtonElement>) => {
+			event.preventDefault();
+			setMenu({ clipId: clip.id, x: event.clientX, y: event.clientY });
+		},
+		onResizePointerDown: (clip: TimelineClip, event: React.PointerEvent<HTMLSpanElement>) => {
+			// 锁定语义含时长：锁定的旁白同样禁止 resize。
+			if (clip.kind === 'narration' && clip.binding?.locked) {
+				return;
+			}
+			event.stopPropagation();
+			event.currentTarget.setPointerCapture(event.pointerId);
+			dragJustMovedRef.current = false;
+			setDrag(beginTimelineDrag(clip, 'resize-end', event.clientX));
+		},
+		onHoverChange: setHoveredClipId,
 	};
 
 	return (
 		<section className='h-[270px] shrink-0 border-t border-slate-200 bg-slate-950 text-white'>
 			<header className='flex h-11 items-center gap-3 border-b border-white/10 px-4 text-xs'>
 				<strong>专业时间轴</strong>
-				<span className='text-slate-500'>旁白可拖动，其他轨道自动跟随</span>
+				<span className='text-slate-500'>旁白拖到锚点即绑定，自由落点解绑</span>
 				<span className='text-slate-400'>
 					{timeline.tracks.reduce((count, track) => count + track.clips.length, 0)} 个片段
 				</span>
@@ -112,80 +202,79 @@ export function MultiTrackTimeline({
 							key={track.id}
 							className='flex h-12 items-center gap-2 border-b border-white/5 px-3 text-xs text-slate-300'
 						>
-							{TRACK_META[track.kind].icon}
+							{KIND_ICON[track.kind]}
 							<span>{track.name}</span>
 							{track.locked && <LuLockKeyhole className='ml-auto h-3 w-3 text-slate-500' />}
 						</div>
 					))}
 				</div>
 				<div
-					ref={scrollerRef}
 					className='min-w-0 flex-1 overflow-auto'
-					onPointerMove={applyPointer}
-					onPointerUp={() => setDrag(null)}
-					onPointerCancel={() => setDrag(null)}
+					onPointerMove={handlePointerMove}
+					onPointerUp={() => {
+						if (drag?.moved) {
+							dragJustMovedRef.current = true;
+						}
+						const release = drag
+							? resolveNarrationRelease({ timeline, drag, pixelsPerSecond })
+							: undefined;
+						if (release?.result) {
+							applyEdit(release.result);
+						}
+						setMagnetAnchorId(null);
+						setDrag(null);
+					}}
+					onPointerCancel={() => {
+						// 回弹：开始时有绑定的旁白按原绑定 rebind 回锚点位置。
+						const rollback = drag ? rollbackNarrationDrag({ timeline, drag }) : undefined;
+						if (rollback?.accepted) {
+							onChange(rollback.timeline);
+						}
+						setMagnetAnchorId(null);
+						setDrag(null);
+					}}
 				>
 					<div className='relative' style={{ width: canvasWidth }}>
-						<div className='relative h-6 border-b border-white/10 text-[9px] text-slate-500'>
-							{ticks.map((tick) => (
-								<span
-									key={tick}
-									className='absolute top-1 border-l border-white/10 pl-1'
-									style={{ left: tick * pixelsPerSecond }}
-								>
-									{tick}s
-								</span>
-							))}
-						</div>
+						<TimelineRuler {...overlayProps} onSeek={onSeek} />
 						{timeline.tracks.map((track) => (
-							<div key={track.id} className='relative h-12 border-b border-white/5 bg-white/[0.02]'>
-								{track.clips.map((clip) => {
-									const left = millisecondsToPixels(clip.startMs, pixelsPerSecond);
-									const width = Math.max(
-										16,
-										millisecondsToPixels(clip.durationMs, pixelsPerSecond),
-									);
-									return (
-										<button
-											key={clip.id}
-											type='button'
-											onClick={() => clip.sourceId && onSelectSource(clip.sourceId)}
-											onPointerDown={(event) => {
-												if (track.locked) {
-													return;
-												}
-												event.currentTarget.setPointerCapture(event.pointerId);
-												setDrag({ clip, clientX: event.clientX, mode: 'move' });
-											}}
-											className={cn(
-												'absolute top-1 h-10 overflow-hidden rounded border border-white/20 px-2 text-left text-[10px] shadow-sm',
-												TRACK_META[track.kind].color,
-												track.locked && 'cursor-default opacity-80',
-												selectedSourceId === clip.sourceId && 'ring-2 ring-white',
-											)}
-											style={{ left, width }}
-											title={`${clip.label ?? clip.id}\n${(clip.startMs / 1000).toFixed(2)}s - ${((clip.startMs + clip.durationMs) / 1000).toFixed(2)}s`}
-										>
-											<span className='block truncate'>{clip.label || clip.id}</span>
-											<span className='opacity-70'>{(clip.startMs / 1000).toFixed(1)}s</span>
-											{!track.locked && (
-												<span
-													role='presentation'
-													onPointerDown={(event) => {
-														event.stopPropagation();
-														setDrag({ clip, clientX: event.clientX, mode: 'resize-end' });
-													}}
-													className='absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-white/20'
-												/>
-											)}
-										</button>
-									);
-								})}
-							</div>
+							<TimelineTrackRow
+								key={track.id}
+								{...overlayProps}
+								track={track}
+								selectedClipId={selectedClipId}
+								selectedSourceId={selectedSourceId}
+								detachingClipId={detachingClipId}
+								interactions={interactions}
+							/>
 						))}
+						<BindingOverlay
+							{...overlayProps}
+							canvasWidth={canvasWidth}
+							selectedClipId={selectedClipId}
+							hoveredClipId={hoveredClipId}
+							magnetAnchorId={magnetAnchorId}
+						/>
+						{playheadMs !== undefined && <PlayheadLine {...overlayProps} playheadMs={playheadMs} />}
 					</div>
 				</div>
 			</div>
+			{menu && menuClip && (
+				<TimelineClipContextMenu
+					timeline={timeline}
+					clip={menuClip}
+					x={menu.x}
+					y={menu.y}
+					onClose={() => setMenu(null)}
+					onLockToggle={(locked) =>
+						applyEdit(toggleNarrationBindingLock(timeline, menuClip.id, locked))
+					}
+					onDetach={() => applyEdit(detachTimelineBinding(timeline, menuClip.id))}
+					onRebindDefault={(binding) =>
+						applyEdit(rebindTimelineClip(timeline, menuClip.id, binding))
+					}
+					onLocateSource={onSelectSource}
+				/>
+			)}
 		</section>
 	);
 }

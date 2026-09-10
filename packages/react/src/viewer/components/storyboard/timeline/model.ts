@@ -20,8 +20,10 @@ export function clipEndMs(clip: Pick<TimelineClip, 'startMs' | 'durationMs'>): n
 }
 
 export function sortClips(clips: TimelineClip[]): TimelineClip[] {
+	// tie-break 用码点比较而非 localeCompare：锚点编号与"最早锚点"选择必须跨环境确定。
 	return [...clips].sort(
-		(left, right) => left.startMs - right.startMs || left.id.localeCompare(right.id),
+		(left, right) =>
+			left.startMs - right.startMs || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
 	);
 }
 

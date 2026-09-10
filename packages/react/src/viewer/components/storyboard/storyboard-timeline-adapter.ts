@@ -1,3 +1,4 @@
+import { assignAnimationAnchorLabels } from './storyboard-animation-labels';
 import type { StoryboardShot } from './storyboard-model';
 import {
 	buildTimelineFromStoryboard,
@@ -7,7 +8,15 @@ import {
 } from './timeline';
 import type { TimelineClip, TimelineModel } from './timeline';
 
-export function buildStoryboardTimeline(shots: StoryboardShot[]): TimelineModel {
+export interface BuildStoryboardTimelineOptions {
+	/** Fallback when an animation event carries no targetLabel of its own. */
+	resolveTargetLabel?: (targetId: string) => string | undefined;
+}
+
+export function buildStoryboardTimeline(
+	shots: StoryboardShot[],
+	options: BuildStoryboardTimelineOptions = {},
+): TimelineModel {
 	const base = buildTimelineFromStoryboard(
 		shots.map((shot) => ({
 			id: shot.id,
@@ -24,9 +33,11 @@ export function buildStoryboardTimeline(shots: StoryboardShot[]): TimelineModel 
 		return base;
 	}
 	const starts = new Map(visual.clips.map((clip) => [clip.sourceId, clip.startMs]));
+	const groupIndexes = animationGroupIndexes(shots);
 	const clips: TimelineClip[] = [];
 	for (const shot of shots) {
 		const shotStart = starts.get(shot.id) ?? 0;
+		const groupIndex = groupIndexes.get(shot.id) ?? 0;
 		for (const event of shot.animationEvents ?? []) {
 			clips.push({
 				id: `animation-${event.id}`,
@@ -37,7 +48,16 @@ export function buildStoryboardTimeline(shots: StoryboardShot[]): TimelineModel 
 				label: shot.effectLabel,
 				sourceId: shot.id,
 				parallelGroupId: shot.parallelGroupId,
-				metadata: { targetId: event.targetId },
+				metadata: {
+					eventId: event.id,
+					targetId: event.targetId,
+					targetLabel: event.targetLabel ?? fallbackTargetLabel(options, event.targetId),
+					presetClass: event.presetClass,
+					effectLabel: shot.effectLabel,
+					trigger: event.trigger,
+					groupIndex,
+					groupLabel: `动画组 ${groupIndex + 1}`,
+				},
 			});
 		}
 	}
@@ -47,7 +67,33 @@ export function buildStoryboardTimeline(shots: StoryboardShot[]): TimelineModel 
 		),
 		base.frameRate,
 	);
-	return normalizeNarrationDurations(timeline, shots);
+	return assignAnimationAnchorLabels(normalizeNarrationDurations(timeline, shots));
+}
+
+/**
+ * A shot carries one animation group, so a group's ordinal is only meaningful
+ * across the shot's slide: prefer the authoritative clickGroupIndex and fall
+ * back to counting that slide's animation shots in list order.
+ */
+function animationGroupIndexes(shots: StoryboardShot[]): Map<string, number> {
+	const groupIndexes = new Map<string, number>();
+	const seenPerSlide = new Map<number, number>();
+	for (const shot of shots) {
+		if (shot.kind !== 'animation') {
+			continue;
+		}
+		const ordinal = seenPerSlide.get(shot.slideIndex) ?? 0;
+		seenPerSlide.set(shot.slideIndex, ordinal + 1);
+		groupIndexes.set(shot.id, shot.clickGroupIndex ?? ordinal);
+	}
+	return groupIndexes;
+}
+
+function fallbackTargetLabel(
+	options: BuildStoryboardTimelineOptions,
+	targetId?: string,
+): string | undefined {
+	return targetId ? options.resolveTargetLabel?.(targetId) : undefined;
 }
 
 export function normalizeNarrationDurations(

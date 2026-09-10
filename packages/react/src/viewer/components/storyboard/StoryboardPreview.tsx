@@ -12,7 +12,17 @@ interface StoryboardPreviewProps {
 	isPlaying: boolean;
 	onTogglePlay: () => void;
 	onRestart: () => void;
+	progressMs?: number;
+	durationMs?: number;
 	stageRef?: React.RefObject<HTMLDivElement | null>;
+}
+
+/** Clamped playhead fraction, or undefined when no real timing was passed in. */
+function progressRatio(progressMs: number | undefined, durationMs: number | undefined) {
+	if (progressMs === undefined || durationMs === undefined || durationMs <= 0) {
+		return undefined;
+	}
+	return Math.min(1, Math.max(0, progressMs / durationMs));
 }
 
 export function StoryboardPreview({
@@ -22,6 +32,8 @@ export function StoryboardPreview({
 	isPlaying,
 	onTogglePlay,
 	onRestart,
+	progressMs,
+	durationMs,
 	stageRef,
 }: StoryboardPreviewProps): React.ReactElement {
 	const thumbHeight = Math.max(
@@ -29,6 +41,7 @@ export function StoryboardPreview({
 		Math.round((canvasSize.height / Math.max(canvasSize.width, 1)) * 160),
 	);
 	const previewScale = Math.min(4.8, 640 / 160, 410 / thumbHeight);
+	const ratio = progressRatio(progressMs, durationMs);
 	return (
 		<section className='flex min-w-0 flex-1 flex-col bg-[#f4f5f8]'>
 			<div className='flex items-center justify-center gap-2 border-b border-slate-200 bg-white px-4 py-2 text-xs text-slate-500'>
@@ -76,9 +89,15 @@ export function StoryboardPreview({
 					)}
 				</button>
 				<div className='h-1.5 w-56 overflow-hidden rounded-full bg-slate-200'>
-					<div
-						className={`h-full bg-orange-500 ${isPlaying ? 'w-2/3 transition-all duration-[1800ms]' : 'w-1/3'}`}
-					/>
+					{ratio === undefined ? (
+						<div
+							className={`h-full bg-orange-500 ${
+								isPlaying ? 'w-2/3 transition-all duration-[1800ms]' : 'w-1/3'
+							}`}
+						/>
+					) : (
+						<div className='h-full bg-orange-500' style={{ width: `${ratio * 100}%` }} />
+					)}
 				</div>
 			</div>
 		</section>

@@ -2,8 +2,11 @@ import type { PptxSlide } from 'pptx-viewer-core';
 import React, { useState } from 'react';
 import { LuAudioLines, LuBot, LuCaptions, LuLoaderCircle, LuVolume2 } from 'react-icons/lu';
 
+import { NarrationBindingEditor, scriptDriftFeedback } from './NarrationBindingEditor';
 import { slideDisplayTitle, slidePlainText } from './storyboard-model';
 import type { StoryboardShot, StoryboardScriptRequest } from './storyboard-model';
+import { estimateScriptDuration } from './timeline';
+import type { TimelineBinding, TimelineClip } from './timeline';
 
 interface StoryboardScriptPanelProps {
 	shot: StoryboardShot;
@@ -13,6 +16,9 @@ interface StoryboardScriptPanelProps {
 	voiceType: number;
 	speed: number;
 	audioPreview?: { url: string; durationMs: number; taskId: string };
+	narrationClip?: TimelineClip;
+	animationClips?: TimelineClip[];
+	onBindingChange?: (binding: TimelineBinding | undefined) => void;
 	onScriptChange: (script: string) => void;
 	onVoiceTypeChange: (voiceType: number) => void;
 	onSpeedChange: (speed: number) => void;
@@ -38,6 +44,9 @@ export function StoryboardScriptPanel({
 	voiceType,
 	speed,
 	audioPreview,
+	narrationClip,
+	animationClips,
+	onBindingChange,
 	onScriptChange,
 	onVoiceTypeChange,
 	onSpeedChange,
@@ -47,6 +56,7 @@ export function StoryboardScriptPanel({
 	const [generating, setGenerating] = useState(false);
 	const [notice, setNotice] = useState('');
 	const [generatingAudio, setGeneratingAudio] = useState(false);
+	const drift = scriptDriftFeedback(shot.script, narrationClip?.durationMs);
 	const request: StoryboardScriptRequest = {
 		shot,
 		slideTitle: slideDisplayTitle(slide, shot.slideIndex),
@@ -156,8 +166,20 @@ export function StoryboardScriptPanel({
 				/>
 				<div className='flex items-center text-xs text-slate-400'>
 					<span>{shot.script.length}/4000 字</span>
-					<span className='ml-auto'>约 {Math.max(1, Math.round(shot.script.length / 4.2))} 秒</span>
+					<span className='ml-auto'>
+						约 {Math.round(estimateScriptDuration(shot.script) / 1000)} 秒
+					</span>
 				</div>
+				{drift && (
+					<div className='rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700'>
+						<p>
+							{drift.direction === 'longer'
+								? `将顺延后续画面约 ${drift.seconds} 秒`
+								: `可缩短后续画面约 ${drift.seconds} 秒`}
+						</p>
+						<p className='mt-1 text-slate-500'>锚点保持不变，TTS 重算后自动对齐</p>
+					</div>
+				)}
 				<button
 					type='button'
 					onClick={() => void generate()}
@@ -174,6 +196,11 @@ export function StoryboardScriptPanel({
 				{notice && (
 					<p className='rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700'>{notice}</p>
 				)}
+				<NarrationBindingEditor
+					narrationClip={narrationClip}
+					animationClips={animationClips ?? []}
+					onChange={(binding: TimelineBinding | undefined) => onBindingChange?.(binding)}
+				/>
 				<div className='rounded-xl border border-slate-200 p-4'>
 					<div className='mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800'>
 						<LuAudioLines /> 配音
