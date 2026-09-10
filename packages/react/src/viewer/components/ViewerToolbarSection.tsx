@@ -166,6 +166,7 @@ export interface ViewerToolbarSectionProps {
 	onOpenSettings?: () => void;
 	onOpenHeaderFooter?: () => void;
 	onOpenShareDialog?: () => void;
+	onOpenStoryboard?: () => void;
 	onOpenFile?: () => void;
 	onOpenRecentFile?: (key: string) => void;
 	onToggleFormatPainter?: () => void;
@@ -238,6 +239,7 @@ export function ViewerToolbarSection(props: ViewerToolbarSectionProps) {
 		onOpenSettings,
 		onOpenHeaderFooter,
 		onOpenShareDialog,
+		onOpenStoryboard,
 		onOpenFile,
 		onOpenRecentFile,
 		onToggleFormatPainter: onToggleFormatPainterProp,
@@ -574,6 +576,7 @@ export function ViewerToolbarSection(props: ViewerToolbarSectionProps) {
 				isNarrowViewport={dialogs.isNarrowViewport}
 				isSidebarCollapsed={!s.isSlidesPaneOpen}
 				isInspectorPaneOpen={s.isInspectorPaneOpen}
+				onOpenStoryboard={onOpenStoryboard}
 				isCompactToolbarOpen={s.isCompactToolbarOpen}
 				toolbarSection={s.toolbarSection}
 				scale={zoom.scale}

@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 import { buildStamp } from '../build-stamp';
+import { storyboardApi } from './storyboard-api';
 
 export default defineConfig({
 	root: __dirname,
@@ -15,6 +16,7 @@ export default defineConfig({
 		react(),
 		tailwindcss(),
 		buildStamp(path.resolve(__dirname, '../../packages/react/package.json')),
+		storyboardApi(),
 	],
 	server: {
 		port: 4173,

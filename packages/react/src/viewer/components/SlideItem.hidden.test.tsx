@@ -21,7 +21,10 @@ import { SlideCard } from './slide-sorter/SlideCard';
 import { SlideItem } from './slides-pane/SlideItem';
 
 vi.mock<typeof import('react-i18next')>(import('react-i18next'), () => ({
-	useTranslation: () => ({ t: (key: string) => translationsEn[key] ?? key }),
+	useTranslation: () => ({
+		t: (key: string, options?: { n?: number }) =>
+			(translationsEn[key] ?? key).replace('{{n}}', String(options?.n ?? '')),
+	}),
 }));
 
 let container: HTMLDivElement;

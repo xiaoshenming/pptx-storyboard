@@ -60,3 +60,16 @@ export const demoStringsDe = {
 	'demo.dropzone.joiningSession': 'Zusammenarbeitssitzung beitreten:',
 	'demo.dropzone.uploadAriaLabel': 'Praesentation hochladen',
 };
+
+export const demoStringsZhCn = {
+	'demo.dropzone.hint': '将 .pptx 或 .ppt 文件拖到这里，或点击选择文件',
+	'demo.dropzone.hintCollab': '将 .pptx 或 .ppt 文件拖到这里，或点击选择文件开始协作',
+	'demo.dropzone.processed': '文件完全在浏览器本地处理',
+	'demo.dropzone.browse': '选择文件',
+	'demo.dropzone.newPresentation': '或新建演示文稿',
+	'demo.dropzone.creating': '正在创建...',
+	'demo.dropzone.joiningBroadcast': '正在加入广播：',
+	'demo.dropzone.loadingBroadcast': '正在从广播端加载演示文稿...',
+	'demo.dropzone.joiningSession': '正在加入协作会话：',
+	'demo.dropzone.uploadAriaLabel': '上传演示文稿',
+};

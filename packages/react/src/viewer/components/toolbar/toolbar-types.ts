@@ -68,6 +68,8 @@ export interface ToolbarProps {
 	onPresentFromBeginning?: () => void;
 	onToggleSidebar: () => void;
 	onToggleInspector: () => void;
+	/** Opens the PPT-to-video storyboard workspace. */
+	onOpenStoryboard?: () => void;
 	/** Opens the inspector pane and switches to the properties tab (for animation panel). */
 	onOpenAnimationPanel: () => void;
 	/**

@@ -544,6 +544,12 @@ export interface PowerPointViewerProps {
 	 * @see {@link PptxAiConfig}
 	 */
 	ai?: PptxAiConfig;
+	/** Server-side endpoint used by the optional PPT storyboard workspace to generate one scene script. */
+	storyboardScriptEndpoint?: string;
+	/** Server-side Tencent premium TTS preview endpoint. */
+	storyboardTtsEndpoint?: string;
+	/** Background render-job endpoint used for parallel TTS, rendering, progress, cancellation and MP4 download. */
+	storyboardJobEndpoint?: string;
 }
 
 export interface PowerPointViewerHandle extends FileViewerHandle, PowerPointViewerAPI {

@@ -44,7 +44,7 @@ export function ArrangeSection(p: ArrangeSectionProps): React.ReactElement {
 							onClick={() => p.onAlignElements(a.k)}
 							disabled={!canMut}
 							className={i < arr.length - 1 ? gB : gL}
-							title={t('pptx.arrange.align', { direction: a.k })}
+							title={t(`pptx.ribbon.align${a.k.charAt(0).toUpperCase()}${a.k.slice(1)}`)}
 						>
 							{a.el}
 						</button>

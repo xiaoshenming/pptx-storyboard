@@ -1,4 +1,11 @@
 const SECTION_DEFINITIONS = [
+	{ name: 'ai-assistant', prefixes: ['ai'] },
+	{
+		name: 'backstage',
+		prefixes: ['backstage', 'compatibility', 'readOnly'],
+	},
+	{ name: 'slide-templates', prefixes: ['layoutGallery', 'slideTemplates'] },
+	{ name: 'viewer-options', prefixes: ['options'] },
 	{
 		name: 'application-shell',
 		prefixes: [
@@ -22,6 +29,9 @@ const SECTION_DEFINITIONS = [
 			'viewer',
 			'mode',
 			'overflow',
+			'font',
+			'format',
+			'group',
 		],
 	},
 	{
@@ -47,6 +57,7 @@ const SECTION_DEFINITIONS = [
 			'mobileMenu',
 			'mobileToolbar',
 			'notesToolbar',
+			'outline',
 		],
 	},
 	{
@@ -86,6 +97,7 @@ const SECTION_DEFINITIONS = [
 			'keepAnnotations',
 			'transition',
 			'transitionPresets',
+			'record',
 		],
 	},
 	{
@@ -146,6 +158,7 @@ const SECTION_DEFINITIONS = [
 			'shapePresets',
 			'elementType',
 			'selectionOverlay',
+			'colorPicker',
 		],
 	},
 	{
@@ -196,14 +209,20 @@ const SECTION_DEFINITIONS = [
 			'slideSize',
 			'slideDiff',
 			'slides',
+			'theme',
+			'themeColor',
+			'themes',
 		],
 	},
 	{ name: 'ribbon', prefixes: ['ribbon', 'home', 'insert'] },
 ] as const;
 
-export const MAX_LOCALE_SECTION_ENTRIES = 275;
+export const MAX_LOCALE_SECTION_ENTRIES = 285;
 
 export function localeSectionNameForKey(key: string): string {
+	if (key.startsWith('pptx.animation.catalogPreset.')) {
+		return 'animation-presets';
+	}
 	const prefix = key.split('.')[1];
 	const section = SECTION_DEFINITIONS.find((candidate) =>
 		candidate.prefixes.includes(prefix as never),

@@ -1,6 +1,13 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { LuMessageSquare, LuPanelLeft, LuPanelRight, LuSettings, LuSparkles } from 'react-icons/lu';
+import {
+	LuClapperboard,
+	LuMessageSquare,
+	LuPanelLeft,
+	LuPanelRight,
+	LuSettings,
+	LuSparkles,
+} from 'react-icons/lu';
 
 import { cn } from '../../utils';
 import { useCollaboration, UserAvatarBar } from '../collaboration';
@@ -44,6 +51,17 @@ export function ToolbarPrimaryRow(p: ToolbarProps): React.ReactElement {
 			<div className='flex-1 min-w-2 max-md:min-w-1' />
 
 			{/* Right: Comments + Present + Share + Inspector + Settings + Overflow */}
+			{p.onOpenStoryboard && mode === 'edit' && (
+				<button
+					type='button'
+					onClick={p.onOpenStoryboard}
+					className='mr-2 flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-rose-500 px-3 py-1.5 text-xs font-bold text-white shadow-md shadow-orange-950/20 transition hover:opacity-90'
+					title='打开 PPT 分镜视频工作台'
+				>
+					<LuClapperboard className='h-4 w-4' />
+					分镜视频
+				</button>
+			)}
 			{(mode === 'edit' || mode === 'master') && (
 				<button
 					type='button'

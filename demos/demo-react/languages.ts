@@ -14,6 +14,7 @@ export const languages: LanguageOption[] = [
 	{ code: 'fr', label: 'Français' },
 	{ code: 'es', label: 'Español' },
 	{ code: 'de', label: 'Deutsch' },
+	{ code: 'zh-CN', label: '简体中文' },
 ];
 
 export const languageKeys = languages.map((language) => language.code);

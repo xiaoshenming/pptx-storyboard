@@ -187,9 +187,9 @@ export function PresentationPropertiesPanel({
 
 			{activeSlide && (
 				<div className={cn(CARD, 'space-y-1')}>
-					<div className={HEADING}>Slide</div>
+					<div className={HEADING}>{t('pptx.viewer.slide')}</div>
 					<div className='text-[11px] text-muted-foreground'>
-						{activeSlide.elements?.length ?? 0} elements
+						{activeSlide.elements?.length ?? 0} {t('pptx.documentProperties.statistics.elements')}
 					</div>
 				</div>
 			)}

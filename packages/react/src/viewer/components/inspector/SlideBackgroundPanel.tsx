@@ -44,26 +44,27 @@ export function SlideBackgroundPanel({
 		<>
 			{/* Slide Background */}
 			<div className={cn(CARD, 'space-y-2')}>
-				<div className={HEADING}>Background</div>
+				<div className={HEADING}>{t('pptx.viewer.background')}</div>
 
 				{/* Solid colour */}
 				<label className='flex items-center gap-2 text-[11px]'>
-					<span className='text-muted-foreground w-10 shrink-0'>Colour</span>
+					<span className='text-muted-foreground w-10 shrink-0'>{t('pptx.ribbon.colour')}</span>
 					<DebouncedColorInput
 						value={normalizeHexColor(activeSlide.backgroundColor, '#ffffff')}
 						disabled={!canEdit}
 						className='h-6 w-8 rounded border border-border bg-muted cursor-pointer'
 						onCommit={(hex) => onUpdateSlide({ backgroundColor: hex })}
+						ariaLabel={t('pptx.inspector.color')}
 					/>
 					<span className='text-muted-foreground text-[10px] truncate'>
-						{activeSlide.backgroundColor || 'none'}
+						{activeSlide.backgroundColor || t('pptx.fill.none')}
 					</span>
 				</label>
 
 				{/* Background image */}
 				<div className='space-y-1'>
 					<div className='flex items-center gap-2 text-[11px]'>
-						<span className='text-muted-foreground w-10 shrink-0'>Image</span>
+						<span className='text-muted-foreground w-10 shrink-0'>{t('pptx.inspector.image')}</span>
 						<input
 							ref={bgImageInputRef}
 							type='file'

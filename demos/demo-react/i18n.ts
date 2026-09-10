@@ -10,10 +10,21 @@
  */
 import { createInstance } from 'i18next';
 import { keyToLabel, translationsEn } from 'pptx-react-viewer/i18n';
-import { translationsDe, translationsEs, translationsFr } from 'pptx-viewer-locales';
+import {
+	translationsDe,
+	translationsEs,
+	translationsFr,
+	translationsZhCn,
+} from 'pptx-viewer-locales';
 import { initReactI18next } from 'react-i18next';
 
-import { demoStringsDe, demoStringsEn, demoStringsFr, demoStringsEs } from './demo-locales';
+import {
+	demoStringsDe,
+	demoStringsEn,
+	demoStringsEs,
+	demoStringsFr,
+	demoStringsZhCn,
+} from './demo-locales';
 
 const i18nInstance = createInstance();
 
@@ -23,8 +34,9 @@ i18nInstance.use(initReactI18next).init({
 		fr: { translation: { ...translationsFr, ...demoStringsFr } },
 		es: { translation: { ...translationsEs, ...demoStringsEs } },
 		de: { translation: { ...translationsDe, ...demoStringsDe } },
+		'zh-CN': { translation: { ...translationsZhCn, ...demoStringsZhCn } },
 	},
-	lng: 'en',
+	lng: 'zh-CN',
 	fallbackLng: 'en',
 	interpolation: {
 		escapeValue: false, // React already escapes

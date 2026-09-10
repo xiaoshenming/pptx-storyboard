@@ -135,7 +135,7 @@ export function SlideNotesPanel({
 					aria-expanded={isExpanded}
 					aria-controls='slide-notes-content'
 				>
-					Notes
+					{t('pptx.notes.title')}
 					{!isExpanded && hasNotes && (
 						<span className='text-muted-foreground/50 text-[10px]'>(has notes)</span>
 					)}

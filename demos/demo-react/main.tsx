@@ -343,9 +343,9 @@ function App() {
 	}, []);
 	const languageKey = useMemo<string>(() => {
 		try {
-			return localStorage.getItem('pptx-demo-lang') ?? 'en';
+			return localStorage.getItem('pptx-demo-lang') ?? 'zh-CN';
 		} catch {
-			return 'en';
+			return 'zh-CN';
 		}
 	}, []);
 
@@ -876,14 +876,14 @@ function App() {
 	const handleNewPresentation = useCallback(async () => {
 		dropSampleParam();
 		const { handler, data } = await PptxHandler.createBlank({
-			title: 'Untitled Presentation',
+			title: '未命名演示文稿',
 			initialSlideCount: 1,
 		});
 		const bytes = await handler.save(data.slides);
 		setContent(bytes);
-		setFileName('Untitled Presentation');
+		setFileName('未命名演示文稿');
 		try {
-			localStorage.setItem(RECOVERY_STORAGE_KEY, 'Untitled Presentation');
+			localStorage.setItem(RECOVERY_STORAGE_KEY, '未命名演示文稿');
 		} catch {
 			/* ignore */
 		}
@@ -966,6 +966,9 @@ function App() {
 						serverUrl: defaultServerUrl,
 					}}
 					ai={aiConfig}
+					storyboardScriptEndpoint='/api/storyboard/generate'
+					storyboardTtsEndpoint='/api/storyboard/tts'
+					storyboardJobEndpoint='/api/storyboard/jobs'
 					onDirtyChange={(dirty) => {
 						document.title = dirty ? `* ${fileName} - PPTX Viewer` : `${fileName} - PPTX Viewer`;
 					}}

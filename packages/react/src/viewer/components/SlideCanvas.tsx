@@ -1,5 +1,6 @@
 import { motionPathFor, setMotionPath, shouldShowElementHandles } from 'pptx-viewer-shared';
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import type { ShapeAdjustmentHandleDescriptor } from '../types';
 import { getShapeAdjustmentHandleDescriptors, isConnectorOrLineElement } from '../utils';
@@ -103,6 +104,7 @@ export function SlideCanvas({
 	collaborationOverlay,
 	aiActive = false,
 }: SlideCanvasProps) {
+	const { t } = useTranslation();
 	// True when the stage is an interactive editing surface (drag/resize/marquee
 	// are live). Drives touch-action: none and the touch pointer-down wiring so
 	// finger gestures manipulate elements instead of scrolling the page.
@@ -243,7 +245,7 @@ export function SlideCanvas({
 				<div
 					ref={zoom.canvasStageRef}
 					role='region'
-					aria-label={`Slide ${(activeSlideIndex ?? 0) + 1}`}
+					aria-label={t('pptx.slidesPanel.goToSlide', { n: (activeSlideIndex ?? 0) + 1 })}
 					aria-roledescription='slide'
 					data-pptx-ai-active={aiActive ? 'true' : undefined}
 					className='relative shadow-2xl'

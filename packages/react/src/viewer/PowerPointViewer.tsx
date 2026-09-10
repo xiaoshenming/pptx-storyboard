@@ -53,6 +53,7 @@ import type { LocaleCatalogEntry } from 'pptx-viewer-shared/i18n';
 import { LOCALE_CATALOG } from 'pptx-viewer-shared/i18n';
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { LuClapperboard } from 'react-icons/lu';
 
 import {
 	THEME_CATALOG,
@@ -89,6 +90,7 @@ import { RecentColorsProvider } from './components/inspector/RecentColorsContext
 import { MobileChromeOverlay } from './components/mobile/MobileChromeOverlay';
 import { ReadOnlyBanner } from './components/ReadOnlyBanner';
 import { SettingsDialog } from './components/SettingsDialog';
+import { StoryboardStudio } from './components/storyboard/StoryboardStudio';
 import { AccountAuthContext } from './components/toolbar/account-auth-context';
 import { ViewerOptionsContext } from './components/viewer-options-context';
 import { ViewerDialogGroup } from './components/ViewerDialogGroup';
@@ -183,6 +185,9 @@ export const PowerPointViewer = forwardRef<PowerPointViewerHandle, PowerPointVie
 			pieChart3D = false,
 			hiddenActions,
 			ai,
+			storyboardScriptEndpoint,
+			storyboardTtsEndpoint,
+			storyboardJobEndpoint,
 		} = props;
 
 		useEffect(() => {
@@ -377,6 +382,7 @@ export const PowerPointViewer = forwardRef<PowerPointViewerHandle, PowerPointVie
 
 		// ── Share dialog ────────────────────────────────────────────
 		const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+		const [isStoryboardOpen, setIsStoryboardOpen] = useState(false);
 
 		// ── AI assistant panel state lives in useAiPanelController (below,
 		//    once selection state is available). ─────────────────────
@@ -1108,6 +1114,7 @@ export const PowerPointViewer = forwardRef<PowerPointViewerHandle, PowerPointVie
 									onOpenSettings={() => setIsSettingsOpen(true)}
 									onOpenHeaderFooter={() => setIsHeaderFooterOpen(true)}
 									onOpenShareDialog={() => setIsShareDialogOpen(true)}
+									onOpenStoryboard={() => setIsStoryboardOpen(true)}
 									onOpenFile={handleOpenFile}
 									onOpenRecentFile={handleOpenRecentFile}
 									fileName={fileName}
@@ -1139,6 +1146,15 @@ export const PowerPointViewer = forwardRef<PowerPointViewerHandle, PowerPointVie
 									onEditAnyway={readOnlyRec.editAnyway}
 									onDismiss={readOnlyRec.dismiss}
 								/>
+							)}
+							{mode === 'edit' && isMobile && (
+								<button
+									type='button'
+									onClick={() => setIsStoryboardOpen(true)}
+									className='fixed right-3 top-14 z-40 flex items-center gap-1.5 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-3 py-2 text-xs font-bold text-white shadow-lg md:hidden'
+								>
+									<LuClapperboard className='h-4 w-4' /> 分镜视频
+								</button>
 							)}
 
 							<ViewerMainContent
@@ -1238,6 +1254,19 @@ export const PowerPointViewer = forwardRef<PowerPointViewerHandle, PowerPointVie
 						toasts={compatToastsState.toasts}
 						onDismiss={compatToastsState.dismiss}
 						onDismissAll={compatToastsState.dismissAll}
+					/>
+				)}
+
+				{isStoryboardOpen && slides.length > 0 && (
+					<StoryboardStudio
+						fileName={fileName}
+						slides={slides}
+						templateElementsBySlideId={state.templateElementsBySlideId}
+						canvasSize={canvasSize}
+						scriptEndpoint={storyboardScriptEndpoint}
+						ttsEndpoint={storyboardTtsEndpoint}
+						jobEndpoint={storyboardJobEndpoint}
+						onClose={() => setIsStoryboardOpen(false)}
 					/>
 				)}
 
