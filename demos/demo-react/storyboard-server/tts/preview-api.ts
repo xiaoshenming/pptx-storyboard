@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -6,6 +6,7 @@ import type { Connect } from 'vite';
 
 import { makeToneWav } from '../jobs/fake-synthesizer';
 import { synthesizeLocalWav } from '../jobs/local-espeak-synthesizer';
+import { EdgeTtsStoryboardSynthesizer } from '../jobs/neural-tts';
 import { acceptsContentType } from '../request-security';
 import { TencentTtsService } from './service';
 
@@ -85,6 +86,36 @@ export function createTtsPreviewMiddleware(): Connect.NextHandleFunction {
 					subtitles: [],
 					segments: [],
 				});
+			}
+			if (process.env.STORYBOARD_TTS_EDGE === '1') {
+				const workDir = await mkdtemp(join(tmpdir(), 'storyboard-edge-preview-'));
+				try {
+					const taskId = `edge-${Date.now()}`;
+					const result = await new EdgeTtsStoryboardSynthesizer().synthesize({
+						taskId,
+						clipId: 'preview',
+						sourceShotId: 'preview',
+						startMs: 0,
+						startSample: 0,
+						text,
+						voiceType,
+						speed,
+						outputDir: workDir,
+						signal: AbortSignal.timeout(60_000),
+					});
+					const audio = await readFile(result.audioPath!);
+					return respond(response, 200, {
+						taskId,
+						provider: 'edge-tts',
+						durationMs: result.durationMs,
+						mimeType: 'audio/wav',
+						audioBase64: audio.toString('base64'),
+						subtitles: result.words,
+						segments: [],
+					});
+				} finally {
+					await rm(workDir, { recursive: true, force: true });
+				}
 			}
 			if (process.env.STORYBOARD_TTS_LOCAL === '1') {
 				const workDir = await mkdtemp(join(tmpdir(), 'storyboard-tts-preview-'));

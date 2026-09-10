@@ -1,6 +1,8 @@
 import JSZip from 'jszip';
+import type { PptxElement, PptxSlide } from 'pptx-viewer-core';
 
-import { renderElementToCanvas } from '../../utils/export-helpers';
+import type { CanvasSize } from '../../types';
+import { captureStoryboardShotsAsPng } from './capture';
 import type { StoryboardShot } from './storyboard-model';
 import type { TimelineModel } from './timeline';
 import { millisecondsToFrame } from './timeline';
@@ -37,7 +39,9 @@ interface CreateJobInput {
 	endpoint: string;
 	fileName: string;
 	shots: StoryboardShot[];
-	stageElements: HTMLElement[];
+	slides: PptxSlide[];
+	templateElementsBySlideId: Record<string, PptxElement[]>;
+	canvasSize: CanvasSize;
 	width: number;
 	height: number;
 	voiceType: number;
@@ -46,44 +50,17 @@ interface CreateJobInput {
 	onCaptureProgress?: (done: number, total: number) => void;
 }
 
-function canvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-	return new Promise((resolve, reject) => {
-		canvas.toBlob(
-			(blob) => (blob ? resolve(blob) : reject(new Error('分镜 PNG 编码失败'))),
-			'image/png',
-		);
-	});
-}
-
-async function captureFrames(
-	elements: HTMLElement[],
-	onProgress?: (done: number, total: number) => void,
-): Promise<Blob[]> {
-	const results = new Array<Blob>(elements.length);
-	let next = 0;
-	let done = 0;
-	const concurrency = Math.min(4, elements.length);
-	await Promise.all(
-		Array.from({ length: concurrency }, async () => {
-			while (next < elements.length) {
-				const index = next++;
-				const canvas = await renderElementToCanvas(elements[index], 4);
-				results[index] = await canvasBlob(canvas);
-				done += 1;
-				onProgress?.(done, elements.length);
-			}
-		}),
-	);
-	return results;
-}
-
 export async function createStoryboardRenderJob(
 	input: CreateJobInput,
 ): Promise<StoryboardJobProgress> {
-	if (input.stageElements.length !== input.shots.length) {
-		throw new Error('分镜捕获节点数量不一致');
-	}
-	const frames = await captureFrames(input.stageElements, input.onCaptureProgress);
+	const frames = await captureStoryboardShotsAsPng({
+		shots: input.shots,
+		slides: input.slides,
+		templateElementsBySlideId: input.templateElementsBySlideId,
+		canvasSize: input.canvasSize,
+		concurrency: 4,
+		onProgress: ({ completed, total }) => input.onCaptureProgress?.(completed, total),
+	});
 	const zip = new JSZip();
 	const visualBySource = new Map(
 		(input.timeline.tracks.find((track) => track.kind === 'visual')?.clips ?? []).map((clip) => [
@@ -138,7 +115,7 @@ export async function createStoryboardRenderJob(
 				})) ?? [],
 	};
 	zip.file('manifest.json', JSON.stringify(manifest));
-	frames.forEach((frame, index) => zip.file(manifest.shots[index].frameFile, frame));
+	frames.forEach((frame, index) => zip.file(manifest.shots[index].frameFile, frame.png));
 	const body = await zip.generateAsync({
 		type: 'blob',
 		compression: 'DEFLATE',

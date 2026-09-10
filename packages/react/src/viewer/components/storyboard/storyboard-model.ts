@@ -1,5 +1,12 @@
 import type { PptxElement, PptxSlide } from 'pptx-viewer-core';
 
+import { planStoryboardScript, polishStoryboardScripts } from './script-planner';
+import {
+	buildStoryboardAnimationGroups,
+	initialHiddenElementIds,
+} from './storyboard-animation-groups';
+import type { StoryboardAnimationEvent } from './storyboard-animation-groups';
+
 export type StoryboardShotKind = 'static' | 'initial' | 'animation';
 
 export interface StoryboardShot {
@@ -7,18 +14,16 @@ export interface StoryboardShot {
 	slideIndex: number;
 	animationIndex?: number;
 	animationIndices?: number[];
+	clickGroupIndex?: number;
 	parallelGroupId?: string;
-	animationEvents?: Array<{
-		id: string;
-		targetId?: string;
-		startOffsetMs: number;
-		durationMs: number;
-	}>;
+	animationEvents?: StoryboardAnimationEvent[];
+	hiddenElementIds?: string[];
 	kind: StoryboardShotKind;
 	label: string;
 	effectLabel: string;
 	durationMs: number;
 	script: string;
+	scriptCues?: { preCue: string; revealCue: string; postCue: string };
 	subtitlesEnabled?: boolean;
 }
 
@@ -52,68 +57,20 @@ export function slideDisplayTitle(slide: PptxSlide, index: number): string {
 	);
 }
 
-function editorEffectLabel(animation: NonNullable<PptxSlide['animations']>[number]): string {
-	return (
-		animation.entrance ||
-		animation.emphasis ||
-		animation.exit ||
-		(animation.motionPath ? '运动路径' : '动画')
-	);
-}
-
-type SlideAnimation =
-	| NonNullable<PptxSlide['animations']>[number]
-	| NonNullable<PptxSlide['nativeAnimations']>[number];
-
-interface AnimationGroup {
-	id: string;
-	items: Array<{ animation: SlideAnimation; index: number; startOffsetMs: number }>;
-}
-
-function animationGroups(animations: SlideAnimation[]): AnimationGroup[] {
-	const groups: AnimationGroup[] = [];
-	for (const [index, animation] of animations.entries()) {
-		const nativeGroup = 'parGroupIndex' in animation ? animation.parGroupIndex : undefined;
-		const continuesPrevious =
-			animation.trigger === 'withPrevious' || animation.trigger === 'afterPrevious';
-		const existing =
-			nativeGroup === undefined
-				? continuesPrevious
-					? groups.at(-1)
-					: undefined
-				: groups.find((group) => group.id === `native-${nativeGroup}`);
-		const group = existing ?? {
-			id: nativeGroup === undefined ? `beat-${groups.length}` : `native-${nativeGroup}`,
-			items: [],
-		};
-		if (!existing) {
-			groups.push(group);
-		}
-		const delayMs =
-			'triggerDelayMs' in animation
-				? (animation.triggerDelayMs ?? animation.delayMs ?? 0)
-				: (animation.delayMs ?? 0);
-		const previous = group.items.at(-1);
-		const startOffsetMs =
-			animation.trigger === 'afterPrevious' && previous
-				? previous.startOffsetMs + (previous.animation.durationMs ?? 600) + delayMs
-				: animation.trigger === 'withPrevious' && previous
-					? previous.startOffsetMs + delayMs
-					: delayMs;
-		group.items.push({ animation, index, startOffsetMs });
+function withPlannedScript(slide: PptxSlide, shot: StoryboardShot): StoryboardShot {
+	if (shot.kind !== 'animation' && slide.notes?.trim()) {
+		return { ...shot, script: slide.notes.trim() };
 	}
-	return groups;
-}
-
-function defaultScript(slide: PptxSlide, kind: StoryboardShotKind, _effectLabel: string): string {
-	if (kind !== 'animation' && slide.notes?.trim()) {
-		return slide.notes.trim();
-	}
-	const text = slidePlainText(slide).replaceAll('\n', '，').slice(0, 180);
-	if (kind === 'animation') {
-		return '';
-	}
-	return text ? `这一页主要讲解：${text}` : '请补充这一页的讲解文案。';
+	const plan = planStoryboardScript(slide, shot);
+	return {
+		...shot,
+		script: plan.speakText,
+		scriptCues: {
+			preCue: plan.preCue,
+			revealCue: plan.revealCue,
+			postCue: plan.postCue,
+		},
+	};
 }
 
 export function buildStoryboardShots(
@@ -121,23 +78,20 @@ export function buildStoryboardShots(
 	options: { collapseAnimations?: boolean } = {},
 ): StoryboardShot[] {
 	return slides.flatMap((slide, slideIndex) => {
-		const editorAnimations = slide.animations ?? [];
-		const nativeAnimations = editorAnimations.length === 0 ? (slide.nativeAnimations ?? []) : [];
-		const animations: SlideAnimation[] =
-			editorAnimations.length > 0 ? editorAnimations : nativeAnimations;
-		if (animations.length === 0 || options.collapseAnimations) {
-			return [
-				{
+		const animationGroups = buildStoryboardAnimationGroups(slide, slideIndex);
+		if (animationGroups.length === 0 || options.collapseAnimations) {
+			return polishStoryboardScripts([
+				withPlannedScript(slide, {
 					id: `slide-${slideIndex + 1}-static`,
 					slideIndex,
 					kind: 'static' as const,
 					label: `第 ${slideIndex + 1} 页`,
 					effectLabel: '静态页面',
 					durationMs: 5000,
-					script: defaultScript(slide, 'static', '静态页面'),
+					script: '',
 					subtitlesEnabled: true,
-				},
-			];
+				}),
+			]);
 		}
 		const initial: StoryboardShot = {
 			id: `slide-${slideIndex + 1}-initial`,
@@ -146,55 +100,47 @@ export function buildStoryboardShots(
 			label: `第 ${slideIndex + 1} 页 · 初始`,
 			effectLabel: '页面进入',
 			durationMs: 2500,
-			script: defaultScript(slide, 'initial', '页面进入'),
+			script: '',
+			hiddenElementIds: initialHiddenElementIds(slide),
 			subtitlesEnabled: true,
 		};
-		return [
-			initial,
-			...animationGroups(animations).map((group, groupIndex) => {
-				const animation = group.items[0].animation;
-				const animationIndex = group.items[0].index;
-				const effectLabel =
-					'elementId' in animation
-						? editorEffectLabel(animation)
-						: animation.presetClass === 'path'
-							? '运动路径'
-							: animation.presetClass === 'exit'
-								? '退出动画'
-								: animation.presetClass === 'emph'
-									? '强调动画'
-									: '进入动画';
-				const animationEvents = group.items.map(({ animation: item, index, startOffsetMs }) => ({
-					id: `slide-${slideIndex + 1}-animation-${index + 1}`,
-					targetId: 'elementId' in item ? item.elementId : item.targetId,
-					startOffsetMs,
-					durationMs: item.durationMs ?? 600,
-				}));
-				return {
+		return polishStoryboardScripts([
+			withPlannedScript(slide, initial),
+			...animationGroups.map((group, groupIndex) => {
+				const animationEvents = group.events;
+				return withPlannedScript(slide, {
 					id: `slide-${slideIndex + 1}-animation-group-${groupIndex + 1}`,
 					slideIndex,
-					animationIndex,
-					animationIndices: group.items.map((item) => item.index),
+					animationIndex: group.animationIndices?.[0],
+					animationIndices: group.animationIndices,
+					clickGroupIndex: groupIndex,
 					parallelGroupId: `${slide.id}:${group.id}`,
 					animationEvents,
+					hiddenElementIds: group.hiddenElementIds,
 					kind: 'animation' as const,
 					label: `第 ${slideIndex + 1} 页 · 动画组 ${groupIndex + 1}`,
-					effectLabel,
+					effectLabel: group.effectLabel,
 					durationMs: Math.max(
 						1800,
 						...animationEvents.map((event) => event.startOffsetMs + event.durationMs + 1000),
 					),
-					script: defaultScript(slide, 'animation', effectLabel),
+					script: '',
 					subtitlesEnabled: true,
-				};
+				});
 			}),
-		];
+		]);
 	});
 }
 
 export function storyboardSlideForShot(slide: PptxSlide, shot: StoryboardShot): PptxSlide {
 	if (shot.kind === 'static') {
 		return slide;
+	}
+	if (shot.hiddenElementIds) {
+		const hiddenIds = new Set(shot.hiddenElementIds);
+		return hiddenIds.size === 0
+			? slide
+			: { ...slide, elements: slide.elements.filter((element) => !hiddenIds.has(element.id)) };
 	}
 	const editorAnimations = slide.animations ?? [];
 	const nativeAnimations = editorAnimations.length === 0 ? (slide.nativeAnimations ?? []) : [];

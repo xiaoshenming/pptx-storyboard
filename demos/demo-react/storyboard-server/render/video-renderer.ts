@@ -6,8 +6,8 @@ import { setStoryboardJobStage, updateStoryboardJob } from '../jobs/job-store';
 import type { StoryboardJob, StoryboardJobManifest, StoryboardRenderTask } from '../jobs/job-types';
 import { mapConcurrent } from './concurrency';
 import { detectVideoEncoder, runCommand } from './ffmpeg-runner';
-import { wordsToSrt } from './subtitles';
-import type { StoryboardWordBoundary } from './subtitles';
+import { narrationToSrt } from './subtitles';
+import type { StoryboardNarrationCue, StoryboardWordBoundary } from './subtitles';
 import { compileRenderTiming } from './timing';
 
 export interface SynthesizedShotAudio {
@@ -170,7 +170,7 @@ export async function renderStoryboardVideo(
 		{ signal, cwd: job.workDir },
 	);
 
-	const words: StoryboardWordBoundary[] = [];
+	const narrations: StoryboardNarrationCue[] = [];
 	for (const shot of manifest.shots) {
 		if (!shot.subtitlesEnabled) {
 			continue;
@@ -181,19 +181,19 @@ export async function renderStoryboardVideo(
 			if (!placement) {
 				continue;
 			}
-			for (const word of clip.words) {
-				words.push({
-					...word,
-					startMs: word.startMs + placement.startMs,
-					endMs: word.endMs + placement.startMs,
+			const text = manifest.narrationClips.find((item) => item.id === clip.clipId)?.script.trim();
+			if (text) {
+				narrations.push({
+					text,
+					startMs: placement.startMs,
+					endMs: placement.startMs + clip.durationMs,
 				});
 			}
 		}
 	}
-	words.sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs);
-	const subtitlePath = words.length ? join(job.workDir, 'storyboard.srt') : undefined;
+	const subtitlePath = narrations.length ? join(job.workDir, 'storyboard.srt') : undefined;
 	if (subtitlePath) {
-		await writeFile(subtitlePath, wordsToSrt(words));
+		await writeFile(subtitlePath, narrationToSrt(narrations));
 	}
 
 	const outputPath = join(job.workDir, 'storyboard.mp4');

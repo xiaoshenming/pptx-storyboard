@@ -31,7 +31,11 @@ describe('buildStoryboardShots', () => {
 		]);
 		expect(shots).toHaveLength(2);
 		expect(shots.map((shot) => shot.kind)).toStrictEqual(['initial', 'animation']);
-		expect(shots[1]).toMatchObject({ animationIndex: 0, effectLabel: 'fadeIn', durationMs: 1800 });
+		expect(shots[1]).toMatchObject({
+			animationIndex: 0,
+			effectLabel: '进入动画',
+			durationMs: 1800,
+		});
 	});
 
 	it('uses parsed native animations when editor animations are absent', () => {
@@ -66,13 +70,26 @@ describe('buildStoryboardShots', () => {
 		const shots = buildStoryboardShots([
 			slide({
 				nativeAnimations: [
-					{ targetId: 'one', presetClass: 'entr', durationMs: 700, parGroupIndex: 4 },
-					{ targetId: 'two', presetClass: 'emph', durationMs: 900, parGroupIndex: 4 },
+					{
+						targetId: 'one',
+						presetClass: 'entr',
+						durationMs: 700,
+						parGroupIndex: 4,
+						trigger: 'onClick',
+					},
+					{
+						targetId: 'two',
+						presetClass: 'emph',
+						durationMs: 900,
+						parGroupIndex: 4,
+						trigger: 'withPrevious',
+					},
 				],
 			}),
 		]);
 		expect(shots).toHaveLength(2);
-		expect(shots[1]).toMatchObject({ animationIndices: [0, 1], durationMs: 1900 });
+		expect(shots[1]).toMatchObject({ durationMs: 1900 });
+		expect(shots[1].animationEvents).toHaveLength(2);
 	});
 
 	it('collapses animated slides to one shot in static fast mode', () => {

@@ -22,6 +22,12 @@ STORYBOARD_TTS_FAKE=1 STORYBOARD_GPU_ENCODING=1 bun run demo -- --host 127.0.0.1
 STORYBOARD_TTS_LOCAL=1 STORYBOARD_GPU_ENCODING=1 bun run demo -- --host 127.0.0.1 --port 4173
 ```
 
+高质量中文神经语音模式：
+
+```bash
+STORYBOARD_TTS_EDGE=1 STORYBOARD_GPU_ENCODING=1 bun run demo -- --host 127.0.0.1 --port 4173
+```
+
 腾讯精品 TTS 模式：
 
 ```bash

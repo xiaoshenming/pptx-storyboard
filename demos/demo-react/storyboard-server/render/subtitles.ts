@@ -4,6 +4,12 @@ export interface StoryboardWordBoundary {
 	endMs: number;
 }
 
+export interface StoryboardNarrationCue {
+	text: string;
+	startMs: number;
+	endMs: number;
+}
+
 function srtTime(ms: number): string {
 	const value = Math.max(0, Math.round(ms));
 	const hours = Math.floor(value / 3_600_000);
@@ -44,6 +50,51 @@ export function wordsToSrt(words: StoryboardWordBoundary[]): string {
 			const endMs = Math.max(startMs + 1, last.endMs);
 			previousEndMs = endMs;
 			return `${index + 1}\n${srtTime(startMs)} --> ${srtTime(endMs)}\n${cue.map((item) => item.text).join('')}\n`;
+		})
+		.join('\n');
+}
+
+function splitNarration(text: string, limit = 22): string[] {
+	const parts = text.match(/[^，。！？；,.!?;]+[，。！？；,.!?;]?/gu) ?? [text];
+	const cues: string[] = [];
+	let current = '';
+	for (const part of parts.map((item) => item.trim()).filter(Boolean)) {
+		if (current && current.length + part.length > limit) {
+			cues.push(current);
+			current = part;
+		} else {
+			current += part;
+		}
+	}
+	if (current) {
+		cues.push(current);
+	}
+	return cues;
+}
+
+export function narrationToSrt(narrations: StoryboardNarrationCue[]): string {
+	let cueIndex = 0;
+	let previousEndMs = 0;
+	return [...narrations]
+		.sort((left, right) => left.startMs - right.startMs)
+		.flatMap((narration) => {
+			const parts = splitNarration(narration.text);
+			const totalCharacters = parts.reduce((sum, part) => sum + part.length, 0);
+			let elapsedCharacters = 0;
+			return parts.map((part) => {
+				const nominalStart =
+					narration.startMs +
+					((narration.endMs - narration.startMs) * elapsedCharacters) / totalCharacters;
+				elapsedCharacters += part.length;
+				const nominalEnd =
+					narration.startMs +
+					((narration.endMs - narration.startMs) * elapsedCharacters) / totalCharacters;
+				const startMs = Math.max(previousEndMs, nominalStart);
+				const endMs = Math.max(startMs + 1, nominalEnd);
+				previousEndMs = endMs;
+				cueIndex += 1;
+				return `${cueIndex}\n${srtTime(startMs)} --> ${srtTime(endMs)}\n${part}\n`;
+			});
 		})
 		.join('\n');
 }

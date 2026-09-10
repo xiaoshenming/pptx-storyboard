@@ -112,7 +112,7 @@ export function StoryboardScriptPanel({
 			};
 			onAudioPreview(preview);
 			setNotice(
-				`${payload.provider === 'local-espeak' ? '本地普通话配音' : '腾讯精品 TTS'}已生成 · ${preview.taskId}`,
+				`${payload.provider === 'edge-tts' ? '晓晓神经语音' : payload.provider === 'local-espeak' ? '本地普通话配音' : '腾讯精品 TTS'}已生成 · ${preview.taskId}`,
 			);
 			await new Audio(preview.url).play();
 		} catch (error) {

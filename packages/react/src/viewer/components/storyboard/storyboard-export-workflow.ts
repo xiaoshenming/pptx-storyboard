@@ -1,3 +1,6 @@
+import type { PptxElement, PptxSlide } from 'pptx-viewer-core';
+
+import type { CanvasSize } from '../../types';
 import { downloadBlob } from '../../utils/dom-helpers';
 import { createStoryboardRenderJob, readStoryboardRenderJob } from './storyboard-job-client';
 import type { StoryboardJobProgress } from './storyboard-job-client';
@@ -8,6 +11,9 @@ interface StoryboardExportWorkflowInput {
 	endpoint: string;
 	fileName: string;
 	shots: StoryboardShot[];
+	slides: PptxSlide[];
+	templateElementsBySlideId: Record<string, PptxElement[]>;
+	canvasSize: CanvasSize;
 	timeline: TimelineModel;
 	voiceType: number;
 	speed: number;
@@ -26,14 +32,13 @@ async function downloadResult(url: string, jobToken: string, fileName: string): 
 export async function runStoryboardExport(
 	input: StoryboardExportWorkflowInput,
 ): Promise<StoryboardJobProgress> {
-	const stageElements = Array.from(
-		document.querySelectorAll<HTMLElement>('[data-storyboard-export-shot]'),
-	);
 	const created = await createStoryboardRenderJob({
 		endpoint: input.endpoint,
 		fileName: input.fileName,
 		shots: input.shots,
-		stageElements,
+		slides: input.slides,
+		templateElementsBySlideId: input.templateElementsBySlideId,
+		canvasSize: input.canvasSize,
 		width: 1920,
 		height: 1080,
 		voiceType: input.voiceType,

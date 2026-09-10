@@ -16,7 +16,6 @@ import {
 	reconcileNarrationTiming,
 	updateTimelineScript,
 } from './storyboard-timeline-adapter';
-import { StoryboardExportStages } from './StoryboardExportStages';
 import { StoryboardJobStatus } from './StoryboardJobStatus';
 import { StoryboardPageRail } from './StoryboardPageRail';
 import { StoryboardPreview } from './StoryboardPreview';
@@ -165,6 +164,9 @@ export function StoryboardStudio({
 				endpoint: jobEndpoint,
 				fileName: fileName || 'presentation.pptx',
 				shots,
+				slides,
+				templateElementsBySlideId,
+				canvasSize,
 				voiceType,
 				speed: voiceSpeed,
 				timeline,
@@ -190,12 +192,6 @@ export function StoryboardStudio({
 
 	return (
 		<div className='fixed inset-0 z-[300] flex flex-col bg-[#f4f5f8] text-slate-900'>
-			<StoryboardExportStages
-				shots={shots}
-				slides={slides}
-				templateElementsBySlideId={templateElementsBySlideId}
-				canvasSize={canvasSize}
-			/>
 			{renderJob && (
 				<StoryboardJobStatus
 					job={renderJob}

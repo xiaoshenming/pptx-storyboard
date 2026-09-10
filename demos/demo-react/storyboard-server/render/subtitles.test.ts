@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { wordsToSrt } from './subtitles';
+import { narrationToSrt, wordsToSrt } from './subtitles';
 
 describe('wordsToSrt', () => {
 	it('emits valid non-overlapping cues when provider timings overlap', () => {
@@ -23,5 +23,28 @@ describe('wordsToSrt', () => {
 		);
 		expect(output).toContain('ProjectAtlas，');
 		expect(output).not.toContain('ProjectAt\n');
+	});
+});
+
+describe('narrationToSrt', () => {
+	it('keeps punctuation and event-level timing from the original narration', () => {
+		const output = narrationToSrt([
+			{ text: '先算二乘三等于六，再添上两个零。', startMs: 2500, endMs: 6100 },
+		]);
+		expect(output).toContain('00:00:02,500');
+		expect(output).toContain('先算二乘三等于六，再添上两个零。');
+	});
+
+	it('splits long narration only at readable punctuation', () => {
+		const output = narrationToSrt([
+			{
+				text: '先把整十数零前面的数相乘，再看乘数末尾有几个零，就在积的末尾添上几个零。',
+				startMs: 0,
+				endMs: 6000,
+			},
+		]);
+		expect(output).toContain('先把整十数零前面的数相乘，');
+		expect(output).toContain('再看乘数末尾有几个零，');
+		expect(output).not.toContain('数相\n');
 	});
 });

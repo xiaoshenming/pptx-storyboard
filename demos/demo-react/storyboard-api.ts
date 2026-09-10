@@ -4,6 +4,7 @@ import { FakeStoryboardSynthesizer } from './storyboard-server/jobs/fake-synthes
 import { createStoryboardJobMiddleware } from './storyboard-server/jobs/job-api';
 import { cleanupExpiredStoryboardJobs } from './storyboard-server/jobs/job-store';
 import { LocalEspeakStoryboardSynthesizer } from './storyboard-server/jobs/local-espeak-synthesizer';
+import { EdgeTtsStoryboardSynthesizer } from './storyboard-server/jobs/neural-tts';
 import { TencentStoryboardSynthesizer } from './storyboard-server/jobs/tencent-synthesizer';
 import {
 	acceptsContentType,
@@ -49,9 +50,11 @@ export function storyboardApi(): Plugin {
 			const synthesizer =
 				process.env.STORYBOARD_TTS_FAKE === '1'
 					? new FakeStoryboardSynthesizer()
-					: process.env.STORYBOARD_TTS_LOCAL === '1'
-						? new LocalEspeakStoryboardSynthesizer()
-						: new TencentStoryboardSynthesizer();
+					: process.env.STORYBOARD_TTS_EDGE === '1'
+						? new EdgeTtsStoryboardSynthesizer()
+						: process.env.STORYBOARD_TTS_LOCAL === '1'
+							? new LocalEspeakStoryboardSynthesizer()
+							: new TencentStoryboardSynthesizer();
 			server.middlewares.use('/api/storyboard', (request, response, next) => {
 				if (isLoopbackAddress(request.socket.remoteAddress) && hasTrustedLocalOrigin(request)) {
 					return next();
