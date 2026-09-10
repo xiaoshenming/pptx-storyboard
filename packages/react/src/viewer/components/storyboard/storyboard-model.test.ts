@@ -74,6 +74,15 @@ describe('buildStoryboardShots', () => {
 		expect(shots).toHaveLength(2);
 		expect(shots[1]).toMatchObject({ animationIndices: [0, 1], durationMs: 1900 });
 	});
+
+	it('collapses animated slides to one shot in static fast mode', () => {
+		const shots = buildStoryboardShots(
+			[slide({ nativeAnimations: [{ targetId: 'text-1', presetClass: 'entr' }] })],
+			{ collapseAnimations: true },
+		);
+		expect(shots).toHaveLength(1);
+		expect(shots[0].kind).toBe('static');
+	});
 });
 
 describe('storyboard timing', () => {

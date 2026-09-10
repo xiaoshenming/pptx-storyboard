@@ -38,6 +38,7 @@ export interface StoryboardJob {
 		encoder: 'h264_nvenc' | 'libx264';
 		renderConcurrency: number;
 		ttsConcurrency: number;
+		ttsProvider?: string;
 		elapsedMs: number;
 		outputDurationMs: number;
 		verifiedDurationMs?: number;

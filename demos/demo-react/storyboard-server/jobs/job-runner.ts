@@ -21,6 +21,7 @@ export interface StoryboardSynthesisInput {
 }
 
 export interface StoryboardSynthesizer {
+	readonly providerName?: string;
 	synthesize(input: StoryboardSynthesisInput): Promise<SynthesizedShotAudio>;
 }
 
@@ -149,6 +150,7 @@ export async function runStoryboardJob(
 				encoder: result.encoder,
 				renderConcurrency: result.renderConcurrency,
 				ttsConcurrency: synthesisConcurrency,
+				ttsProvider: synthesizer.providerName ?? 'unknown',
 				elapsedMs: Date.now() - startedAt,
 				outputDurationMs: result.outputDurationMs,
 				verifiedDurationMs: receipt.durationMs,

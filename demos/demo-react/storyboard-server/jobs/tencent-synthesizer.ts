@@ -19,6 +19,7 @@ function credentials(): { secretId: string; secretKey: string; securityToken?: s
 }
 
 export class TencentStoryboardSynthesizer implements StoryboardSynthesizer {
+	readonly providerName = 'tencent-cloud';
 	async synthesize(input: StoryboardSynthesisInput): Promise<SynthesizedShotAudio> {
 		if (input.signal.aborted) {
 			throw new DOMException('Cancelled', 'AbortError');

@@ -3,6 +3,7 @@ import type { Plugin } from 'vite';
 import { FakeStoryboardSynthesizer } from './storyboard-server/jobs/fake-synthesizer';
 import { createStoryboardJobMiddleware } from './storyboard-server/jobs/job-api';
 import { cleanupExpiredStoryboardJobs } from './storyboard-server/jobs/job-store';
+import { LocalEspeakStoryboardSynthesizer } from './storyboard-server/jobs/local-espeak-synthesizer';
 import { TencentStoryboardSynthesizer } from './storyboard-server/jobs/tencent-synthesizer';
 import {
 	acceptsContentType,
@@ -48,7 +49,9 @@ export function storyboardApi(): Plugin {
 			const synthesizer =
 				process.env.STORYBOARD_TTS_FAKE === '1'
 					? new FakeStoryboardSynthesizer()
-					: new TencentStoryboardSynthesizer();
+					: process.env.STORYBOARD_TTS_LOCAL === '1'
+						? new LocalEspeakStoryboardSynthesizer()
+						: new TencentStoryboardSynthesizer();
 			server.middlewares.use('/api/storyboard', (request, response, next) => {
 				if (isLoopbackAddress(request.socket.remoteAddress) && hasTrustedLocalOrigin(request)) {
 					return next();

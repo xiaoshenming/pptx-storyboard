@@ -79,7 +79,13 @@ export function StoryboardJobStatus({
 					</div>
 					{job.execution && (
 						<div className='mb-2 rounded-md bg-slate-50 px-2 py-1.5 text-[11px] text-slate-600'>
-							{job.execution.encoder === 'h264_nvenc' ? 'GPU NVENC' : 'CPU x264'} · 渲染
+							{job.execution.encoder === 'h264_nvenc' ? 'GPU NVENC' : 'CPU x264'} ·{' '}
+							{job.execution.ttsProvider === 'local-espeak'
+								? '本地普通话'
+								: job.execution.ttsProvider === 'tencent-cloud'
+									? '腾讯云TTS'
+									: '测试配音'}{' '}
+							· 渲染
 							{job.execution.renderConcurrency} 路 · 配音 {job.execution.ttsConcurrency} 路 · 用时{' '}
 							{(job.execution.elapsedMs / 1000).toFixed(1)} 秒 / 成片{' '}
 							{(job.execution.outputDurationMs / 1000).toFixed(1)} 秒

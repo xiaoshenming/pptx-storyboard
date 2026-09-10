@@ -16,6 +16,12 @@
 STORYBOARD_TTS_FAKE=1 STORYBOARD_GPU_ENCODING=1 bun run demo -- --host 127.0.0.1 --port 4173
 ```
 
+本地普通话配音模式（需要系统安装 `espeak-ng`）：
+
+```bash
+STORYBOARD_TTS_LOCAL=1 STORYBOARD_GPU_ENCODING=1 bun run demo -- --host 127.0.0.1 --port 4173
+```
+
 腾讯精品 TTS 模式：
 
 ```bash

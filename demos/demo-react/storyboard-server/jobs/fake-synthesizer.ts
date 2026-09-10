@@ -28,6 +28,7 @@ export function makeToneWav(durationMs: number, sampleRate = 16000): Buffer {
 }
 
 export class FakeStoryboardSynthesizer implements StoryboardSynthesizer {
+	readonly providerName = 'fake-tone';
 	async synthesize(input: StoryboardSynthesisInput): Promise<SynthesizedShotAudio> {
 		const characters = [...input.text.replace(/\s/gu, '')];
 		const durationMs = Math.max(700, Math.round((characters.length / 5) * 1000));

@@ -97,6 +97,7 @@ export function StoryboardScriptPanel({
 			});
 			const payload = (await response.json()) as {
 				error?: string;
+				provider?: string;
 				taskId?: string;
 				durationMs?: number;
 				audioBase64?: string;
@@ -110,7 +111,9 @@ export function StoryboardScriptPanel({
 				taskId: payload.taskId,
 			};
 			onAudioPreview(preview);
-			setNotice(`腾讯精品 TTS 已生成 · ${preview.taskId}`);
+			setNotice(
+				`${payload.provider === 'local-espeak' ? '本地普通话配音' : '腾讯精品 TTS'}已生成 · ${preview.taskId}`,
+			);
 			await new Audio(preview.url).play();
 		} catch (error) {
 			setNotice(error instanceof Error ? `配音失败：${error.message}` : '配音失败');

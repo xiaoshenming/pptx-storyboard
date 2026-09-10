@@ -1,6 +1,11 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import type { Connect } from 'vite';
 
 import { makeToneWav } from '../jobs/fake-synthesizer';
+import { synthesizeLocalWav } from '../jobs/local-espeak-synthesizer';
 import { acceptsContentType } from '../request-security';
 import { TencentTtsService } from './service';
 
@@ -80,6 +85,28 @@ export function createTtsPreviewMiddleware(): Connect.NextHandleFunction {
 					subtitles: [],
 					segments: [],
 				});
+			}
+			if (process.env.STORYBOARD_TTS_LOCAL === '1') {
+				const workDir = await mkdtemp(join(tmpdir(), 'storyboard-tts-preview-'));
+				try {
+					const result = await synthesizeLocalWav(
+						text,
+						speed,
+						join(workDir, 'preview.wav'),
+						AbortSignal.timeout(60_000),
+					);
+					return respond(response, 200, {
+						taskId: `local-${Date.now()}`,
+						provider: 'local-espeak',
+						durationMs: result.durationMs,
+						mimeType: 'audio/wav',
+						audioBase64: result.audio.toString('base64'),
+						subtitles: [],
+						segments: [],
+					});
+				} finally {
+					await rm(workDir, { recursive: true, force: true });
+				}
 			}
 			const result = await service(voiceType, speed).synthesize({ text });
 			return respond(response, 200, {

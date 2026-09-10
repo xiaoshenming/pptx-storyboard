@@ -116,13 +116,16 @@ function defaultScript(slide: PptxSlide, kind: StoryboardShotKind, _effectLabel:
 	return text ? `这一页主要讲解：${text}` : '请补充这一页的讲解文案。';
 }
 
-export function buildStoryboardShots(slides: PptxSlide[]): StoryboardShot[] {
+export function buildStoryboardShots(
+	slides: PptxSlide[],
+	options: { collapseAnimations?: boolean } = {},
+): StoryboardShot[] {
 	return slides.flatMap((slide, slideIndex) => {
 		const editorAnimations = slide.animations ?? [];
 		const nativeAnimations = editorAnimations.length === 0 ? (slide.nativeAnimations ?? []) : [];
 		const animations: SlideAnimation[] =
 			editorAnimations.length > 0 ? editorAnimations : nativeAnimations;
-		if (animations.length === 0) {
+		if (animations.length === 0 || options.collapseAnimations) {
 			return [
 				{
 					id: `slide-${slideIndex + 1}-static`,

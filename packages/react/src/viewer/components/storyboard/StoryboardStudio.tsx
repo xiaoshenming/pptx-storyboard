@@ -6,11 +6,7 @@ import { MultiTrackTimeline } from './MultiTrackTimeline';
 import { runStoryboardExport } from './storyboard-export-workflow';
 import { cancelStoryboardRenderJob } from './storyboard-job-client';
 import type { StoryboardJobProgress } from './storyboard-job-client';
-import {
-	buildStoryboardShots,
-	formatStoryboardTime,
-	storyboardSlideForShot,
-} from './storyboard-model';
+import { formatStoryboardTime, storyboardSlideForShot } from './storyboard-model';
 import type { StoryboardShot } from './storyboard-model';
 import { loadStoryboardProject, storyboardProjectId } from './storyboard-project-store';
 import {
@@ -31,6 +27,7 @@ import { estimateScriptDuration } from './timeline';
 import { useStoryboardAutosave } from './use-storyboard-autosave';
 import { isStoryboardJobActive, useStoryboardJobRecovery } from './use-storyboard-job-recovery';
 import { useStoryboardPlayback } from './use-storyboard-playback';
+import { useStoryboardShots } from './use-storyboard-shots';
 
 interface StoryboardStudioProps {
 	fileName?: string;
@@ -53,7 +50,7 @@ export function StoryboardStudio({
 	jobEndpoint,
 	onClose,
 }: StoryboardStudioProps): React.ReactElement {
-	const generatedShots = useMemo(() => buildStoryboardShots(slides), [slides]);
+	const generatedShots = useStoryboardShots(slides);
 	const projectId = useMemo(
 		() => storyboardProjectId(fileName || 'presentation.pptx', generatedShots),
 		[fileName, generatedShots],
