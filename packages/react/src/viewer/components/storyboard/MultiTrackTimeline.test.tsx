@@ -183,6 +183,8 @@ function controlledTimeline(
 	handlers: {
 		onSelectClip?: (clipId: string | undefined) => void;
 		onSeek?: (playheadMs: number) => void;
+		onSelectSource?: (sourceId: string) => void;
+		editingNarrationClipId?: string;
 	} = {},
 ): { changes: TimelineModel[]; model: () => TimelineModel; render: () => void } {
 	let current = initial;
@@ -192,12 +194,13 @@ function controlledTimeline(
 			root.render(
 				<MultiTrackTimeline
 					timeline={current}
+					editingNarrationClipId={handlers.editingNarrationClipId}
 					onChange={(next) => {
 						const reconciled = applyNarrationBindings(next);
 						changes.push(reconciled);
 						current = reconciled;
 					}}
-					onSelectSource={() => {}}
+					onSelectSource={handlers.onSelectSource ?? (() => {})}
 					onSelectClip={handlers.onSelectClip}
 					onSeek={handlers.onSeek}
 					onPlayAll={() => {}}
@@ -367,6 +370,187 @@ describe('multiTrackTimeline selection', () => {
 		});
 		fire(clipCard('narr-1'), 'click');
 		expect(onSelectClip).toHaveBeenCalledWith(undefined);
+	});
+});
+
+describe('multiTrackTimeline click to bind', () => {
+	it('binds the editing narration on animation click and detaches on a second click', () => {
+		const timeline = baseTimeline(animationClip('anim-1', 2000), narrationClip('narr-1', 8000));
+		const onSelectClip = vi.fn();
+		const onSelectSource = vi.fn();
+		const onSeek = vi.fn();
+		const controlled = controlledTimeline(timeline, {
+			onSelectClip,
+			onSelectSource,
+			onSeek,
+			editingNarrationClipId: 'narr-1',
+		});
+		controlled.render();
+		fire(clipCard('anim-1'), 'click');
+		controlled.render();
+		expect(onSelectSource).not.toHaveBeenCalled();
+		expect(onSelectClip).toHaveBeenCalledWith('anim-1');
+		expect(onSeek).toHaveBeenCalledWith(2000);
+		expect(controlled.changes).toHaveLength(1);
+		const bound = lastChange(controlled.changes);
+		expect(bound.binding).toStrictEqual(createTimelineBinding('anim-1', 'with-animation', 0));
+		expect(bound.startMs).toBe(2000);
+		fire(clipCard('anim-1'), 'click');
+		controlled.render();
+		expect(controlled.changes).toHaveLength(2);
+		const detached = lastChange(controlled.changes);
+		expect(detached.binding).toBeUndefined();
+		// 解绑保持落点：旁白留在锚点位置。
+		expect(detached.startMs).toBe(2000);
+		expect(onSelectSource).not.toHaveBeenCalled();
+	});
+
+	it('binds from the diamond anchor click like the animation card', () => {
+		const timeline = baseTimeline(animationClip('anim-1', 5000), narrationClip('narr-1', 8000));
+		const onSelectSource = vi.fn();
+		const controlled = controlledTimeline(timeline, {
+			onSelectSource,
+			editingNarrationClipId: 'narr-1',
+		});
+		controlled.render();
+		const anchor = container.querySelector("[data-anchor-id='anim-1']");
+		if (!anchor) {
+			throw new Error('missing anchor');
+		}
+		fire(anchor, 'click');
+		controlled.render();
+		expect(onSelectSource).not.toHaveBeenCalled();
+		const bound = lastChange(controlled.changes);
+		expect(bound.binding).toStrictEqual(createTimelineBinding('anim-1', 'with-animation', 0));
+		expect(bound.startMs).toBe(5000);
+	});
+
+	it('binds across shots from another shot animation card without switching source', () => {
+		const timeline = buildTimeline([
+			visualClip('vis-1', 0, 9000),
+			animationClip('anim-1', 2000),
+			{ ...animationClip('anim-2', 6000), sourceId: 'shot-2' },
+			narrationClip('narr-1', 8000, undefined, 'shot-2'),
+			subtitleClip('sub-1', 8000),
+		]);
+		const onSelectSource = vi.fn();
+		const controlled = controlledTimeline(timeline, {
+			onSelectSource,
+			editingNarrationClipId: 'narr-1',
+		});
+		controlled.render();
+		fire(clipCard('anim-2'), 'click');
+		controlled.render();
+		// 跨分镜绑定生效，且不切换 selectedSource（编辑器里的旁白保持不变）。
+		expect(onSelectSource).not.toHaveBeenCalled();
+		const bound = lastChange(controlled.changes);
+		expect(bound.sourceId).toBe('shot-2');
+		expect(bound.binding).toStrictEqual(createTimelineBinding('anim-2', 'with-animation', 0));
+		expect(bound.startMs).toBe(6000);
+	});
+
+	it('ignores animation clicks while the editing narration binding is locked', () => {
+		const binding = { ...createTimelineBinding('anim-1', 'with-animation'), locked: true };
+		const timeline = baseTimeline(
+			animationClip('anim-1', 2000),
+			narrationClip('narr-1', 2000, binding),
+		);
+		const onSelectClip = vi.fn();
+		const onSeek = vi.fn();
+		const controlled = controlledTimeline(timeline, {
+			onSelectClip,
+			onSeek,
+			editingNarrationClipId: 'narr-1',
+		});
+		controlled.render();
+		fire(clipCard('anim-1'), 'click');
+		controlled.render();
+		expect(controlled.changes).toHaveLength(0);
+		expect(onSelectClip).not.toHaveBeenCalled();
+		expect(onSeek).not.toHaveBeenCalled();
+		expect(clipCard('anim-1').getAttribute('title')).toContain('绑定已锁定');
+	});
+
+	it('falls back to the legacy select path when the editing narration is missing', () => {
+		const timeline = baseTimeline(animationClip('anim-1', 2000), narrationClip('narr-1', 2000));
+		const onSelectSource = vi.fn();
+		const onSeek = vi.fn();
+		const controlled = controlledTimeline(timeline, {
+			onSelectSource,
+			onSeek,
+			editingNarrationClipId: 'narr-missing',
+		});
+		controlled.render();
+		fire(clipCard('anim-1'), 'click');
+		expect(onSelectSource).toHaveBeenCalledWith('shot-1');
+		expect(onSeek).toHaveBeenCalledWith(2000);
+		expect(controlled.changes).toHaveLength(0);
+	});
+
+	it('falls back to the legacy path when the narration track is locked', () => {
+		const base = baseTimeline(animationClip('anim-1', 2000), narrationClip('narr-1', 2000));
+		const timeline = createTimelineModel(
+			base.tracks.map((track) => (track.kind === 'narration' ? { ...track, locked: true } : track)),
+		);
+		const onSelectSource = vi.fn();
+		const controlled = controlledTimeline(timeline, {
+			onSelectSource,
+			editingNarrationClipId: 'narr-1',
+		});
+		controlled.render();
+		fire(clipCard('anim-1'), 'click');
+		expect(onSelectSource).toHaveBeenCalledWith('shot-1');
+		expect(controlled.changes).toHaveLength(0);
+	});
+
+	it('does not toggle the binding when the click follows a moved drag', () => {
+		const timeline = baseTimeline(animationClip('anim-1', 2000), narrationClip('narr-1', 8000));
+		const onSelectClip = vi.fn();
+		const onSelectSource = vi.fn();
+		const controlled = controlledTimeline(timeline, {
+			onSelectClip,
+			onSelectSource,
+			editingNarrationClipId: 'narr-1',
+		});
+		controlled.render();
+		fire(clipCard('anim-1'), 'pointerdown', (2000 * PPS) / 1000);
+		fire(scroller(), 'pointermove', 880);
+		controlled.render();
+		fire(scroller(), 'pointerup');
+		fire(clipCard('anim-1'), 'click');
+		controlled.render();
+		// 只有 move 中间帧：拖完松手后的 click 不触发绑定开关。
+		expect(controlled.changes).toHaveLength(1);
+		expect(onSelectClip).not.toHaveBeenCalled();
+		expect(onSelectSource).not.toHaveBeenCalled();
+		const animation = controlled.model().tracks.find((track) => track.kind === 'animation')!
+			.clips[0];
+		expect(animation.startMs).toBe(11000);
+		const narration = controlled.model().tracks.find((track) => track.kind === 'narration')!
+			.clips[0];
+		expect(narration.binding).toBeUndefined();
+	});
+
+	it('hints the click affordance on animation cards and anchors', () => {
+		const timeline = baseTimeline(
+			animationClip('anim-1', 2000),
+			narrationClip('narr-1', 8000, createTimelineBinding('anim-1', 'with-animation')),
+		);
+		act(() => {
+			root.render(
+				<MultiTrackTimeline
+					timeline={timeline}
+					editingNarrationClipId='narr-1'
+					onChange={() => {}}
+					onSelectSource={() => {}}
+					onPlayAll={() => {}}
+				/>,
+			);
+		});
+		expect(clipCard('anim-1').getAttribute('title')).toContain('点击解除绑定');
+		const anchor = container.querySelector("[data-anchor-id='anim-1']");
+		expect(anchor!.getAttribute('class')).toContain('cursor-pointer');
+		expect(anchor!.querySelector('title')?.textContent).toContain('点击解除绑定');
 	});
 });
 

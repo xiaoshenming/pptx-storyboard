@@ -1,12 +1,16 @@
 import { defaultBindingForNarration } from './narration-binding-actions';
 import { presetClassLabel } from './storyboard-animation-labels';
 import {
+	createTimelineBinding,
 	createTimelineModel,
 	createTimelineTrack,
+	detachTimelineBinding,
 	estimateScriptDuration,
+	findTimelineClip,
+	rebindTimelineClip,
 	resolveBindingStartMs,
 } from './timeline';
-import type { TimelineClip, TimelineModel } from './timeline';
+import type { TimelineClip, TimelineEditResult, TimelineModel } from './timeline';
 
 export interface AnimationClipMetadata {
 	anchorLabel?: string;
@@ -61,6 +65,95 @@ export function splitAnimationClips(
 		(sourceId !== undefined && clip.sourceId === sourceId ? own : others).push(clip);
 	}
 	return { own, others };
+}
+
+/**
+ * What clicking an animation clip (card or diamond anchor) means for the
+ * narration clip currently edited in the binding panel: `bind` rebinds to the
+ * clicked clip, `toggle-off` detaches an existing binding to it, `ignored`
+ * swallows the click (locked binding), `legacy` falls back to the plain
+ * select path (feature off, narration missing or its track locked).
+ */
+export type AnimationBindingClickOutcome = 'bind' | 'toggle-off' | 'ignored' | 'legacy';
+
+export function animationBindingClickOutcome(input: {
+	timeline: TimelineModel;
+	editingNarrationClipId: string | undefined;
+	clip: TimelineClip;
+}): AnimationBindingClickOutcome {
+	const { clip, editingNarrationClipId, timeline } = input;
+	if (clip.kind !== 'animation' || !editingNarrationClipId) {
+		return 'legacy';
+	}
+	const found = findTimelineClip(timeline, editingNarrationClipId);
+	if (!found || found.track.kind !== 'narration' || found.track.locked) {
+		return 'legacy';
+	}
+	// 锁定的旁白完全吞掉点击：不绑定也不解绑。
+	if (found.clip.binding?.locked) {
+		return 'ignored';
+	}
+	return found.clip.binding?.anchorId === clip.id ? 'toggle-off' : 'bind';
+}
+
+export interface AnimationBindingClickHandler {
+	/** True when the click was consumed by the binding toggle (or swallowed). */
+	handleClick: (clip: TimelineClip) => boolean;
+	/** Hover hint for an animation card/anchor, e.g. `点击绑定旁白`. */
+	hintFor: (clip: TimelineClip) => string | undefined;
+}
+
+/**
+ * Wires the click-to-bind decision to the timeline callbacks. Animation cards
+ * and BindingOverlay diamonds share one handler: a consumed click rebinds or
+ * detaches the editing narration (with-animation, zero offset), keeps the seek
+ * for A/V checks and never calls onSelectSource, so the binding panel keeps
+ * showing the same narration.
+ */
+export function createAnimationBindingClickHandler(input: {
+	timeline: TimelineModel;
+	editingNarrationClipId: string | undefined;
+	selectedClipId?: string;
+	applyEdit: (result: TimelineEditResult) => void;
+	onSelectClip?: (clipId: string | undefined) => void;
+	onSeek?: (playheadMs: number) => void;
+}): AnimationBindingClickHandler {
+	const { applyEdit, editingNarrationClipId, selectedClipId, timeline } = input;
+	const hintFor = (clip: TimelineClip): string | undefined => {
+		switch (animationBindingClickOutcome({ clip, editingNarrationClipId, timeline })) {
+			case 'bind':
+				return '点击绑定旁白';
+			case 'toggle-off':
+				return '点击解除绑定';
+			case 'ignored':
+				return '绑定已锁定';
+			default:
+				return undefined;
+		}
+	};
+	const handleClick = (clip: TimelineClip): boolean => {
+		const outcome = animationBindingClickOutcome({ clip, editingNarrationClipId, timeline });
+		if (outcome === 'legacy') {
+			return false;
+		}
+		if (outcome === 'ignored') {
+			return true;
+		}
+		applyEdit(
+			outcome === 'bind'
+				? rebindTimelineClip(
+						timeline,
+						editingNarrationClipId!,
+						createTimelineBinding(clip.id, 'with-animation', 0),
+					)
+				: detachTimelineBinding(timeline, editingNarrationClipId!),
+		);
+		input.onSelectClip?.(selectedClipId === clip.id ? undefined : clip.id);
+		// 保留 seek 便于检查音画；刻意不切分镜，绑定面板的旁白保持不变。
+		input.onSeek?.(clip.startMs);
+		return true;
+	};
+	return { handleClick, hintFor };
 }
 
 /**

@@ -148,6 +148,7 @@ export function StoryboardStudio({
 	});
 
 	const selectedShot = shots.find((shot) => shot.id === selectedShotId) ?? shots[0];
+	const narrationClip = selectedShot ? narrationClipForShot(timeline, selectedShot.id) : undefined;
 	const sourceSlide = selectedShot ? slides[selectedShot.slideIndex] : slides[0];
 	const selectedSlide =
 		selectedShot && sourceSlide ? storyboardSlideForShot(sourceSlide, selectedShot) : sourceSlide;
@@ -251,7 +252,7 @@ export function StoryboardStudio({
 								voiceType={voiceType}
 								speed={voiceSpeed}
 								audioPreview={audioPreviews[selectedShot.id]}
-								narrationClip={narrationClipForShot(timeline, selectedShot.id)}
+								narrationClip={narrationClip}
 								animationClips={animationClipsOf(timeline)}
 								onBindingChange={changeNarrationBinding}
 								onVoiceTypeChange={(value) => {
@@ -285,6 +286,7 @@ export function StoryboardStudio({
 						selectedSourceId={selectedShot?.id}
 						selectedClipId={selectedClipId}
 						playheadMs={playheadMs}
+						editingNarrationClipId={narrationClip?.id}
 						onChange={applyTimelineEdit}
 						onSelectSource={selectShot}
 						onSelectClip={selectClip}

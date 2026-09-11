@@ -44,6 +44,8 @@ export interface TimelineClipCardProps {
 	badgeTitle?: string;
 	/** True while the clip is dragged to a free landing that releases its binding. */
 	detaching?: boolean;
+	/** Appended to the hover title, e.g. the click-to-bind affordance hint. */
+	bindingHint?: string;
 	onClick: () => void;
 	onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => void;
 	onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
@@ -128,6 +130,7 @@ export function TimelineClipCard({
 	badge,
 	badgeTitle,
 	detaching,
+	bindingHint,
 	onClick,
 	onPointerDown,
 	onContextMenu,
@@ -139,7 +142,7 @@ export function TimelineClipCard({
 	const title =
 		trackKind === 'subtitle'
 			? `${clip.label || clip.id}\n${timeRange}\n时间继承自旁白`
-			: [clip.label || clip.id, timeRange, narrationTitle].filter(Boolean).join('\n');
+			: [clip.label || clip.id, timeRange, narrationTitle, bindingHint].filter(Boolean).join('\n');
 	// 锁定语义含时长：锁定旁白（及整轨锁定）不渲染 resize 手柄。
 	const resizeDisabled =
 		trackLocked || (trackKind === 'narration' && clip.binding?.locked === true);
@@ -222,6 +225,8 @@ export interface TimelineTrackRowProps {
 	selectedSourceId?: string;
 	/** Clip whose drag suspends a binding; shows the detach hint while unmagnetized. */
 	detachingClipId?: string;
+	/** Per-clip hover title hint, e.g. the click-to-bind affordance. */
+	bindingHint?: (clip: TimelineClip) => string | undefined;
 	interactions: TimelineClipInteractions;
 }
 
@@ -232,6 +237,7 @@ export function TimelineTrackRow({
 	selectedClipId,
 	selectedSourceId,
 	detachingClipId,
+	bindingHint,
 	interactions,
 }: TimelineTrackRowProps): React.ReactElement {
 	return (
@@ -252,6 +258,7 @@ export function TimelineTrackRow({
 					badge={resolveBindingBadge(timeline, clip)}
 					badgeTitle={narrationBindingTitle(timeline, clip)}
 					detaching={detachingClipId === clip.id}
+					bindingHint={bindingHint?.(clip)}
 					onClick={() => interactions.onClick(clip)}
 					onPointerDown={(event) => interactions.onPointerDown(clip, track.locked, event)}
 					onContextMenu={(event) => interactions.onContextMenu(clip, event)}

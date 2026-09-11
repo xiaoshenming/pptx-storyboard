@@ -125,6 +125,13 @@ export interface BindingOverlayProps {
 	hoveredClipId?: string;
 	/** Anchor magnified while a dragged narration clip is inside magnet range. */
 	magnetAnchorId?: string | null;
+	/**
+	 * Click-to-bind toggle shared with the animation cards; absent keeps the
+	 * legacy read-only anchors.
+	 */
+	onAnchorClick?: (clip: TimelineClip) => void;
+	/** Per-anchor hover hint describing the click action, e.g. `点击绑定旁白`. */
+	anchorHint?: (clip: TimelineClip) => string | undefined;
 }
 
 /**
@@ -139,6 +146,8 @@ export function BindingOverlay({
 	selectedClipId,
 	hoveredClipId,
 	magnetAnchorId,
+	onAnchorClick,
+	anchorHint,
 }: BindingOverlayProps): React.ReactElement {
 	const { anchors, narrationMidpoints } = anchorGeometry(timeline, pixelsPerSecond);
 	const height = TIMELINE_RULER_HEIGHT_PX + timeline.tracks.length * TIMELINE_TRACK_ROW_HEIGHT_PX;
@@ -195,6 +204,7 @@ export function BindingOverlay({
 					: boundAnchorIds.has(clip.id)
 						? 'rgb(52 211 153)'
 						: 'rgb(167 139 250)';
+				const hint = anchorHint?.(clip);
 				return (
 					<rect
 						key={clip.id}
@@ -206,10 +216,15 @@ export function BindingOverlay({
 						fill={fill}
 						stroke={outline ? 'white' : 'rgba(15, 23, 42, 0.6)'}
 						strokeWidth={magnetized ? 1.5 : outline ? 1.2 : 0.5}
+						onClick={onAnchorClick ? () => onAnchorClick(clip) : undefined}
 						data-anchor-id={clip.id}
-						className={cn('pointer-events-auto cursor-help', outline && 'drop-shadow')}
+						className={cn(
+							'pointer-events-auto',
+							onAnchorClick ? 'cursor-pointer' : 'cursor-help',
+							outline && 'drop-shadow',
+						)}
 					>
-						<title>{anchorTitle(clip)}</title>
+						<title>{[anchorTitle(clip), hint].filter(Boolean).join('\n')}</title>
 					</rect>
 				);
 			})}

@@ -46,7 +46,8 @@ const FREE_TIME_OPTION = '自由时间（未绑定）';
 const OWN_GROUP_LABEL = '本分镜的动画';
 const OTHER_GROUP_LABEL = '其他分镜的动画（高级）';
 export const BINDING_HINT =
-	'绑定后，此旁白的开始时间会跟随所选动画：动画同时=与动画一起出现，动画前=在动画开始前讲完，动画后=等动画播完再讲。';
+	'绑定后，此旁白的开始时间会跟随所选动画：动画同时=与动画一起出现，动画前=在动画开始前讲完，动画后=等动画播完再讲。' +
+	'也可以直接点击时间轴上的动画卡或菱形锚点来绑定 / 解除绑定。';
 export const STATIC_SHOT_HINT =
 	'当前分镜没有自己的动画，旁白保持自由时间即可。如需跟随其他分镜的动画，可在时间轴拖动旁白。';
 export const STATIC_SHOT_ADVANCED = '高级：跟随其他分镜动画';
@@ -95,19 +96,27 @@ function renderGroup(label: string, clips: TimelineClip[]): React.ReactElement |
 function UnboundSuggestion({
 	animationClips,
 	sourceId,
+	onChange,
 }: {
 	animationClips: TimelineClip[];
 	sourceId: string | undefined;
+	onChange: (binding: TimelineBinding | undefined) => void;
 }): React.ReactElement | null {
 	const anchorId = suggestedAnchorId(animationClips, sourceId);
 	const suggestion = anchorId ? animationClips.find((clip) => clip.id === anchorId) : undefined;
-	if (!suggestion) {
+	if (!anchorId || !suggestion) {
 		return null;
 	}
 	return (
-		<p className='mt-2 text-[11px] text-slate-400'>
-			建议绑定：{animationClipOptionLabel(suggestion)}（本分镜第一个出现内容的动画）
-		</p>
+		<button
+			type='button'
+			data-testid='binding-suggestion'
+			title='点击采纳这条建议'
+			onClick={() => onChange(createTimelineBinding(anchorId, 'with-animation', 0, false))}
+			className='mt-2 block w-full rounded text-left text-[11px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-orange-600 hover:decoration-solid'
+		>
+			建议绑定：{animationClipOptionLabel(suggestion)}（本分镜第一个出现内容的动画）→
+		</button>
 	);
 }
 
@@ -236,7 +245,11 @@ function BindingForm({
 				解除绑定
 			</button>
 			{!binding && (
-				<UnboundSuggestion animationClips={animationClips} sourceId={narrationClip.sourceId} />
+				<UnboundSuggestion
+					animationClips={animationClips}
+					sourceId={narrationClip.sourceId}
+					onChange={onChange}
+				/>
 			)}
 		</>
 	);

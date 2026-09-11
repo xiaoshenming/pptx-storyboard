@@ -3,6 +3,7 @@ import { LuLockKeyhole } from 'react-icons/lu';
 
 import { BindingOverlay, PlayheadLine, TimelineRuler } from './BindingOverlay';
 import { toggleNarrationBindingLock } from './narration-binding-actions';
+import { createAnimationBindingClickHandler } from './narration-binding-view-model';
 import {
 	detachTimelineBinding,
 	findTimelineClip,
@@ -30,6 +31,8 @@ interface MultiTrackTimelineProps {
 	selectedSourceId?: string;
 	selectedClipId?: string;
 	playheadMs?: number;
+	/** Narration clip the binding panel is editing; enables click-to-bind on animation clips. */
+	editingNarrationClipId?: string;
 	onChange: (timeline: TimelineModel) => void;
 	onSelectSource: (sourceId: string) => void;
 	onSelectClip?: (clipId: string | undefined) => void;
@@ -42,6 +45,7 @@ export function MultiTrackTimeline({
 	selectedSourceId,
 	selectedClipId,
 	playheadMs,
+	editingNarrationClipId,
 	onChange,
 	onSelectSource,
 	onSelectClip,
@@ -59,8 +63,7 @@ export function MultiTrackTimeline({
 	const canvasWidth = Math.max(900, millisecondsToPixels(spanMs, pixelsPerSecond));
 	const menuClip = menu ? findTimelineClip(timeline, menu.clipId)?.clip : undefined;
 	const overlayProps = { timeline, pixelsPerSecond };
-	// 拖拽期间悬置了绑定的旁白，未磁吸时给出"已解绑"预告。
-	// 未过移动阈值的抖动不会提交任何帧，此时不预告，避免徽章闪烁误导。
+	// 拖拽期间悬置绑定的旁白，未磁吸时预告"已解绑"；亚阈值抖动不预告避免闪烁。
 	const detachingClipId =
 		drag &&
 		drag.mode === 'move' &&
@@ -76,6 +79,16 @@ export function MultiTrackTimeline({
 			onChange(result.timeline);
 		}
 	};
+
+	// 点击即绑定：动画卡与菱形锚点共用开关处理；无编辑旁白或轨道锁定时回退旧选中路径。
+	const bindingClick = createAnimationBindingClickHandler({
+		timeline,
+		editingNarrationClipId,
+		selectedClipId,
+		applyEdit,
+		onSelectClip,
+		onSeek,
+	});
 
 	const commitFrame = (result: TimelineEditResult, clientX: number) => {
 		onChange(result.timeline);
@@ -123,6 +136,10 @@ export function MultiTrackTimeline({
 		onClick: (clip: TimelineClip) => {
 			if (dragJustMovedRef.current) {
 				dragJustMovedRef.current = false;
+				return;
+			}
+			// 点击即绑定：动画卡点击被绑定开关消费时跳过旧的选中路径。
+			if (bindingClick.handleClick(clip)) {
 				return;
 			}
 			onSelectClip?.(selectedClipId === clip.id ? undefined : clip.id);
@@ -244,6 +261,7 @@ export function MultiTrackTimeline({
 								selectedClipId={selectedClipId}
 								selectedSourceId={selectedSourceId}
 								detachingClipId={detachingClipId}
+								bindingHint={bindingClick.hintFor}
 								interactions={interactions}
 							/>
 						))}
@@ -253,6 +271,8 @@ export function MultiTrackTimeline({
 							selectedClipId={selectedClipId}
 							hoveredClipId={hoveredClipId}
 							magnetAnchorId={magnetAnchorId}
+							onAnchorClick={bindingClick.handleClick}
+							anchorHint={bindingClick.hintFor}
 						/>
 						{playheadMs !== undefined && <PlayheadLine {...overlayProps} playheadMs={playheadMs} />}
 					</div>

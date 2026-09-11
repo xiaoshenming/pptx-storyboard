@@ -314,7 +314,27 @@ describe('narrationBindingEditor', () => {
 		expect(findByText('自由时间（未绑定）')).toBeTruthy();
 		expect(findByText(BINDING_HINT)).toBeTruthy();
 		expect(includesText('跟随动画（锚点）')).toBeTruthy();
-		expect(findByText('建议绑定：A1 · 进入 · 数字 60（本分镜第一个出现内容的动画）')).toBeTruthy();
+		expect(findByText('建议绑定：A1 · 进入 · 数字 60（本分镜第一个出现内容的动画）→')).toBeTruthy();
+	});
+
+	it('hints that timeline clicks bind and unbind directly', () => {
+		renderEditor(narrationClip());
+		expect(findByText(BINDING_HINT)).toBeTruthy();
+		expect(container.textContent).toContain('点击时间轴上的动画卡');
+	});
+
+	it('binds from the clickable suggestion row', () => {
+		renderEditor(narrationClip());
+		const suggestion = container.querySelector<HTMLButtonElement>(
+			"[data-testid='binding-suggestion']",
+		);
+		expect(suggestion?.tagName).toBe('BUTTON');
+		act(() => {
+			suggestion!.click();
+		});
+		expect(lastChange()).toStrictEqual(
+			createTimelineBinding('animation-a1', 'with-animation', 0, false),
+		);
 	});
 
 	it('shows the static-shot state with a collapsed advanced form for shots without animations', () => {
