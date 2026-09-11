@@ -7,6 +7,12 @@ A release listed with no entries carried no Conventional Commit in this package'
 scope: scripts/release-plan.mjs re-releases a package whenever any of its files
 change, not only on conventional ones.
 
+## [3.18.0](https://github.com/ChristopherVR/pptx-viewer/releases/tag/pptx-svelte-viewer@3.18.0) - 2026-09-11
+
+### Features
+
+- **react:** Add localized storyboard video workbench ([1ae222b](https://github.com/ChristopherVR/pptx-viewer/commit/1ae222b42f51fd2a6c11328fa1648dc1d778fef4))
+
 ## [3.6.3](https://github.com/ChristopherVR/pptx-viewer/releases/tag/pptx-svelte-viewer@3.6.3) - 2026-09-03
 
 ### Bug Fixes

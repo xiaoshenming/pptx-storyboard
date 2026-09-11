@@ -7,6 +7,26 @@ A release listed with no entries carried no Conventional Commit in this package'
 scope: scripts/release-plan.mjs re-releases a package whenever any of its files
 change, not only on conventional ones.
 
+## [2.14.0](https://github.com/ChristopherVR/pptx-viewer/releases/tag/@christophervr/pptx-viewer@2.14.0) - 2026-09-11
+
+### Features
+
+- **react:** Add localized storyboard video workbench ([1ae222b](https://github.com/ChristopherVR/pptx-viewer/commit/1ae222b42f51fd2a6c11328fa1648dc1d778fef4))
+- **react:** Add fast local narration export ([8d8bbab](https://github.com/ChristopherVR/pptx-viewer/commit/8d8bbab8e1a5f7129cfc632e60575ae5022d6762))
+- **storyboard:** 同步原生动画与神经配音 ([952834a](https://github.com/ChristopherVR/pptx-viewer/commit/952834aafc791d14ccfd630927efa53489086cc1))
+- **react:** 实现分镜旁白与原生动画的显式绑定交互 ([c250bc2](https://github.com/ChristopherVR/pptx-viewer/commit/c250bc211a936b09b667c2e4b50a6fe219038e24))
+- **react:** 优化分镜静音节奏与动画锚点标签可读性 ([e497a01](https://github.com/ChristopherVR/pptx-viewer/commit/e497a01f28d88d193f4ef7bb70548b523b361128))
+- **react:** 时间轴点击动画即绑定旁白（开关语义） ([772f6a4](https://github.com/ChristopherVR/pptx-viewer/commit/772f6a490814888d8f2de398ef53cdf1601c1df1))
+
+### Bug Fixes
+
+- **storyboard:** 消除数字零的配音停顿 ([67d2720](https://github.com/ChristopherVR/pptx-viewer/commit/67d2720c4c25d14e410ca8e2a49d33ecef1b8cc7))
+- **react:** 修复绑定建议误导并补齐绑定面板语义解释 ([08465d9](https://github.com/ChristopherVR/pptx-viewer/commit/08465d94ed87b6b691253f8477c748937d1cce77))
+
+### Documentation
+
+- **storyboard:** 固化视频流水线版本基线 ([2e2582c](https://github.com/ChristopherVR/pptx-viewer/commit/2e2582c1bf48aa2a77e269781ab02397ad58fca2))
+
 ## [2.5.2](https://github.com/ChristopherVR/pptx-viewer/releases/tag/@christophervr/pptx-viewer@2.5.2) - 2026-09-03
 
 ### Bug Fixes
