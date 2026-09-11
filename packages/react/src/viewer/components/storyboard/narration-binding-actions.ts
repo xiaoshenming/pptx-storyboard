@@ -74,23 +74,31 @@ export function resolveNarrationDrop(input: NarrationDropInput): NarrationDropDe
 }
 
 /**
- * Restores the canonical binding for a narration clip: the earliest animation
- * of the same source shot, falling back to the first animation on the timeline.
+ * Restores the canonical binding for a narration clip (audit C3 semantics):
+ * inside the clip's own shot, prefer the earliest entrance animation that
+ * carries a text target ("first content-bearing entrance"), else the earliest
+ * same-shot animation. A shot without its own animations gets no default:
+ * cross-shot suggestions (the old global fallback) misled users.
  */
 export function defaultBindingForNarration(
 	timeline: TimelineModel,
 	narrationClip: TimelineClip,
 ): TimelineBinding | undefined {
-	const anchors = sortClips(
-		timeline.tracks.filter((track) => track.kind === 'animation').flatMap((track) => track.clips),
+	const shotAnchors = sortClips(
+		timeline.tracks
+			.filter((track) => track.kind === 'animation')
+			.flatMap((track) => track.clips)
+			.filter((clip) => clip.sourceId && clip.sourceId === narrationClip.sourceId),
 	);
-	if (anchors.length === 0) {
+	if (shotAnchors.length === 0) {
 		return undefined;
 	}
 	const anchor =
-		anchors.find(
-			(candidate) => candidate.sourceId && candidate.sourceId === narrationClip.sourceId,
-		) ?? anchors[0];
+		shotAnchors.find(
+			(candidate) =>
+				clipMetadataString(candidate.metadata, 'presetClass') === 'entr' &&
+				clipMetadataString(candidate.metadata, 'targetLabel'),
+		) ?? shotAnchors[0];
 	return createTimelineBinding(anchor.id, 'with-animation', 0);
 }
 

@@ -18,8 +18,17 @@ function animationClip(
 	startMs: number,
 	sourceId?: string,
 	durationMs = 1000,
+	metadata?: Record<string, unknown>,
 ): TimelineClip {
-	return { id, trackId: 'track-animation', kind: 'animation', startMs, durationMs, sourceId };
+	return {
+		id,
+		trackId: 'track-animation',
+		kind: 'animation',
+		startMs,
+		durationMs,
+		sourceId,
+		metadata,
+	};
 }
 
 function narrationClip(
@@ -27,8 +36,17 @@ function narrationClip(
 	startMs: number,
 	binding?: TimelineClip['binding'],
 	durationMs = 2000,
+	sourceId?: string,
 ): TimelineClip {
-	return { id, trackId: 'track-narration', kind: 'narration', startMs, durationMs, binding };
+	return {
+		id,
+		trackId: 'track-narration',
+		kind: 'narration',
+		startMs,
+		durationMs,
+		binding,
+		sourceId,
+	};
 }
 
 function buildTimeline(clips: TimelineClip[]): TimelineModel {
@@ -100,25 +118,41 @@ describe('resolveNarrationDrop', () => {
 });
 
 describe('defaultBindingForNarration', () => {
-	it('prefers the earliest animation of the same source shot', () => {
+	it('prefers the earliest same-shot entrance with a text target (audit C3)', () => {
 		const timeline = buildTimeline([
-			animationClip('a-other', 6000, 'shot-2'),
-			animationClip('a-late', 8000, 'shot-1'),
-			animationClip('a-early', 2000, 'shot-1'),
+			animationClip('a-exit', 1000, 'shot-1', 1000, {
+				presetClass: 'exit',
+				targetLabel: '旧标题',
+			}),
+			animationClip('a-entr-no-text', 2000, 'shot-1', 1000, { presetClass: 'entr' }),
+			animationClip('a-entr', 3000, 'shot-1', 1000, {
+				presetClass: 'entr',
+				targetLabel: '数字 60',
+			}),
 		]);
-		expect(defaultBindingForNarration(timeline, narrationClip('n1', 0))).toStrictEqual(
-			createTimelineBinding('a-early', 'with-animation', 0),
-		);
+		expect(
+			defaultBindingForNarration(timeline, narrationClip('n1', 0, undefined, 2000, 'shot-1')),
+		).toStrictEqual(createTimelineBinding('a-entr', 'with-animation', 0));
 	});
 
-	it('falls back to the earliest timeline animation for unmatched shots', () => {
+	it('falls back to the earliest same-shot animation without a text entrance', () => {
+		const timeline = buildTimeline([
+			animationClip('a-exit', 8000, 'shot-1', 1000, { presetClass: 'exit', targetLabel: '旧标题' }),
+			animationClip('a-emph', 2000, 'shot-1', 1000, { presetClass: 'emph', targetLabel: '徽章' }),
+		]);
+		expect(
+			defaultBindingForNarration(timeline, narrationClip('n1', 0, undefined, 2000, 'shot-1')),
+		).toStrictEqual(createTimelineBinding('a-emph', 'with-animation', 0));
+	});
+
+	it('returns undefined for shots without their own animations (no cross-shot default)', () => {
 		const timeline = buildTimeline([
 			animationClip('a-late', 8000, 'shot-1'),
 			animationClip('a-early', 2000, 'shot-2'),
 		]);
-		expect(defaultBindingForNarration(timeline, narrationClip('n1', 0))).toStrictEqual(
-			createTimelineBinding('a-early', 'with-animation', 0),
-		);
+		expect(
+			defaultBindingForNarration(timeline, narrationClip('n1', 0, undefined, 2000, 'shot-3')),
+		).toBeUndefined();
 	});
 
 	it('returns undefined when the timeline has no animation anchors', () => {

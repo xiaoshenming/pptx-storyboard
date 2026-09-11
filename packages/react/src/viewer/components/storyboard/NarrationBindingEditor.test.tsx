@@ -13,16 +13,20 @@ import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { bindingOutcomePreview, splitAnimationClips } from './narration-binding-view-model';
 import {
+	BINDING_HINT,
 	NarrationBindingEditor,
+	STATIC_SHOT_ADVANCED,
+	STATIC_SHOT_HINT,
 	animationClipOptionLabel,
 	scriptDriftFeedback,
 	suggestedAnchorId,
 } from './NarrationBindingEditor';
 import type { StoryboardShot } from './storyboard-model';
 import { StoryboardScriptPanel } from './StoryboardScriptPanel';
-import { createTimelineBinding } from './timeline';
-import type { TimelineBinding, TimelineClip } from './timeline';
+import { createTimelineBinding, createTimelineModel, createTimelineTrack } from './timeline';
+import type { TimelineBinding, TimelineClip, TimelineModel } from './timeline';
 
 function animationClip(overrides: Partial<TimelineClip> = {}): TimelineClip {
 	return {
@@ -114,10 +118,32 @@ function findAnchorSelect(scope: HTMLElement = container): HTMLSelectElement {
 	return select as HTMLSelectElement;
 }
 
-function renderEditor(clip?: TimelineClip, clips: TimelineClip[] = [animationClip()]): void {
+function buildTimelineModel(clips: TimelineClip[]): TimelineModel {
+	return createTimelineModel([
+		createTimelineTrack(
+			'animation',
+			clips.filter((clip) => clip.kind === 'animation'),
+		),
+		createTimelineTrack(
+			'narration',
+			clips.filter((clip) => clip.kind === 'narration'),
+		),
+	]);
+}
+
+function renderEditor(
+	clip?: TimelineClip,
+	clips: TimelineClip[] = [animationClip()],
+	timeline?: TimelineModel,
+): void {
 	act(() => {
 		root.render(
-			<NarrationBindingEditor narrationClip={clip} animationClips={clips} onChange={onChange} />,
+			<NarrationBindingEditor
+				narrationClip={clip}
+				animationClips={clips}
+				onChange={onChange}
+				timeline={timeline}
+			/>,
 		);
 	});
 }
@@ -145,21 +171,28 @@ function setInputValue(input: HTMLInputElement, value: string): void {
 }
 
 describe('suggestedAnchorId', () => {
-	it('prefers the earliest animation of the same shot', () => {
+	it('prefers the earliest same-shot entrance with a text target (audit C3)', () => {
 		const clips = [
-			animationClip({ id: 'animation-a0', startMs: 2000 }),
-			animationClip({ id: 'animation-a1', startMs: 1000 }),
-			animationClip({ id: 'animation-a2', sourceId: 'shot-2' }),
+			animationClip({
+				id: 'animation-a-exit',
+				startMs: 500,
+				metadata: { anchorLabel: 'A1', presetClass: 'exit', targetLabel: '旧标题' },
+			}),
+			animationClip({ id: 'animation-a-entr', startMs: 3000 }),
 		];
-		expect(suggestedAnchorId(clips, 'shot-1')).toBe('animation-a1');
+		expect(suggestedAnchorId(clips, 'shot-1')).toBe('animation-a-entr');
 	});
 
-	it('breaks startMs ties by clip id, ignoring preset class', () => {
+	it('skips entrances without a text target', () => {
 		const clips = [
-			animationClip({ id: 'animation-a1' }),
-			animationClip({ id: 'animation-a0', metadata: { anchorLabel: 'A1', presetClass: 'exit' } }),
+			animationClip({
+				id: 'animation-a-notext',
+				startMs: 1000,
+				metadata: { anchorLabel: 'A1', presetClass: 'entr' },
+			}),
+			animationClip({ id: 'animation-a-text', startMs: 2000 }),
 		];
-		expect(suggestedAnchorId(clips, 'shot-1')).toBe('animation-a0');
+		expect(suggestedAnchorId(clips, 'shot-1')).toBe('animation-a-text');
 	});
 
 	it('falls back to the earliest animation of the same shot without an entrance', () => {
@@ -170,12 +203,12 @@ describe('suggestedAnchorId', () => {
 		expect(suggestedAnchorId(clips, 'shot-1')).toBe('animation-a0');
 	});
 
-	it('falls back to the earliest clip overall when the shot has no animations', () => {
+	it('returns undefined for a shot without its own animations (no cross-shot default)', () => {
 		const clips = [
 			animationClip({ id: 'animation-a9', startMs: 500, sourceId: 'shot-9' }),
 			animationClip({ id: 'animation-a1', startMs: 100 }),
 		];
-		expect(suggestedAnchorId(clips, 'shot-2')).toBe('animation-a1');
+		expect(suggestedAnchorId(clips, 'shot-2')).toBeUndefined();
 	});
 
 	it('returns undefined for an empty clip list', () => {
@@ -191,6 +224,50 @@ describe('animationClipOptionLabel', () => {
 	it('falls back to the clip label when the target label is missing', () => {
 		const clip = animationClip({ metadata: { anchorLabel: 'A2', presetClass: 'exit' } });
 		expect(animationClipOptionLabel(clip)).toBe('A2 · 退出 · 飞入');
+	});
+});
+
+describe('bindingOutcomePreview', () => {
+	it('formats the current and resolved start with one decimal', () => {
+		const clip = narrationClip({
+			startMs: 530,
+			binding: createTimelineBinding('animation-a1', 'with-animation', 0, false),
+		});
+		const timeline = buildTimelineModel([animationClip({ startMs: 5000 }), clip]);
+		expect(bindingOutcomePreview(timeline, clip)).toBe('当前 0.5s → 绑定后 5.0s');
+	});
+
+	it('flags a negative resolved start as clamped to zero', () => {
+		const clip = narrationClip({
+			binding: createTimelineBinding('animation-a1', 'before-animation', -6000, false),
+		});
+		const timeline = buildTimelineModel([animationClip(), clip]);
+		expect(bindingOutcomePreview(timeline, clip)).toBe('当前 0.0s → 绑定后 0.0s（将被钳到 0）');
+	});
+
+	it('returns undefined without a binding or a resolvable anchor', () => {
+		const timeline = buildTimelineModel([animationClip(), narrationClip()]);
+		expect(bindingOutcomePreview(timeline, narrationClip())).toBeUndefined();
+		const missing = narrationClip({
+			binding: createTimelineBinding('animation-missing', 'with-animation', 0, false),
+		});
+		expect(bindingOutcomePreview(timeline, missing)).toBeUndefined();
+	});
+});
+
+describe('splitAnimationClips', () => {
+	it('splits clips by the narration source id', () => {
+		const own = animationClip();
+		const other = animationClip({ id: 'animation-b1', sourceId: 'shot-2' });
+		expect(splitAnimationClips([own, other], 'shot-1')).toStrictEqual({
+			own: [own],
+			others: [other],
+		});
+	});
+
+	it('treats every clip as other-shot when the narration has no source id', () => {
+		const own = animationClip();
+		expect(splitAnimationClips([own], undefined)).toStrictEqual({ own: [], others: [own] });
 	});
 });
 
@@ -230,12 +307,77 @@ describe('narrationBindingEditor', () => {
 		expect(findByText('当前分镜没有可绑定的动画')).toBeTruthy();
 	});
 
-	it('offers the free-time placeholder and a suggestion while unbound', () => {
+	it('offers the free-time placeholder, a hint and a suggestion while unbound', () => {
 		renderEditor(narrationClip());
 		const select = findAnchorSelect();
 		expect(select.value).toBe('');
 		expect(findByText('自由时间（未绑定）')).toBeTruthy();
-		expect(findByText('建议绑定：A1 · 进入 · 数字 60')).toBeTruthy();
+		expect(findByText(BINDING_HINT)).toBeTruthy();
+		expect(includesText('跟随动画（锚点）')).toBeTruthy();
+		expect(findByText('建议绑定：A1 · 进入 · 数字 60（本分镜第一个出现内容的动画）')).toBeTruthy();
+	});
+
+	it('shows the static-shot state with a collapsed advanced form for shots without animations', () => {
+		renderEditor(narrationClip(), [
+			animationClip({ id: 'animation-other', sourceId: 'shot-2', startMs: 8000 }),
+		]);
+		expect(findByText(STATIC_SHOT_HINT)).toBeTruthy();
+		const details = container.querySelector('details');
+		expect(details).toBeTruthy();
+		expect(details?.open).toBeFalsy();
+		expect(findByText(STATIC_SHOT_ADVANCED)).toBeTruthy();
+		expect(details?.querySelector('select')).toBeTruthy();
+		// 无建议：静态分镜没有"默认绑定"可言。
+		expect(container.textContent?.includes('建议绑定')).toBeFalsy();
+	});
+
+	it('groups the anchor select into own-shot and other-shot optgroups', () => {
+		const clips = [
+			animationClip({ startMs: 2000 }),
+			animationClip({
+				id: 'animation-b1',
+				sourceId: 'shot-2',
+				startMs: 8000,
+				metadata: { anchorLabel: 'B1', presetClass: 'exit', targetLabel: '别页标题' },
+			}),
+		];
+		renderEditor(narrationClip(), clips);
+		const select = findAnchorSelect();
+		const own = select.querySelector('optgroup[label="本分镜的动画"]');
+		const others = select.querySelector('optgroup[label="其他分镜的动画（高级）"]');
+		expect(own?.querySelectorAll('option').length).toBe(1);
+		expect(others?.querySelectorAll('option').length).toBe(1);
+		// "自由时间（未绑定）"占位在分组之外置顶。
+		const firstChild = select.children[0] as HTMLOptionElement;
+		expect(firstChild.tagName).toBe('OPTION');
+		expect(firstChild.textContent).toBe('自由时间（未绑定）');
+	});
+
+	it('previews the bound outcome against the current start', () => {
+		const clip = narrationClip({
+			binding: createTimelineBinding('animation-a1', 'with-animation', 0, false),
+		});
+		const anchor = animationClip({ startMs: 5000 });
+		renderEditor(clip, [anchor], buildTimelineModel([anchor, clip]));
+		expect(findByText('当前 0.0s → 绑定后 5.0s')).toBeTruthy();
+	});
+
+	it('reports a negative bound outcome as clamped to zero', () => {
+		const clip = narrationClip({
+			binding: createTimelineBinding('animation-a1', 'before-animation', -6000, false),
+		});
+		renderEditor(clip, [animationClip()], buildTimelineModel([animationClip(), clip]));
+		expect(findByText('当前 0.0s → 绑定后 0.0s（将被钳到 0）')).toBeTruthy();
+	});
+
+	it('hides the outcome preview while unbound', () => {
+		renderEditor(
+			narrationClip(),
+			[animationClip()],
+			buildTimelineModel([animationClip(), narrationClip()]),
+		);
+		// 固定说明含"绑定后"字样，预览行特征是"→ 绑定后"。
+		expect(container.textContent?.includes('→ 绑定后')).toBeFalsy();
 	});
 
 	it('emits a fresh with-animation binding when an anchor is picked', () => {

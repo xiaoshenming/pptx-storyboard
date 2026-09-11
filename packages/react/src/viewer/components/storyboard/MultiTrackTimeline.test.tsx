@@ -59,6 +59,7 @@ function narrationClip(
 	id: string,
 	startMs: number,
 	binding?: TimelineClip['binding'],
+	sourceId = 'shot-1',
 ): TimelineClip {
 	return {
 		id,
@@ -67,7 +68,7 @@ function narrationClip(
 		startMs,
 		durationMs: 1500,
 		label: '旁白一',
-		sourceId: 'shot-1',
+		sourceId,
 		binding,
 	};
 }
@@ -748,6 +749,34 @@ describe('multiTrackTimeline context menu', () => {
 		const narration = lastChange(changes);
 		expect(narration.binding).toStrictEqual(createTimelineBinding('anim-1', 'with-animation', 0));
 		expect(narration.startMs).toBe(2000);
+	});
+
+	it('disables restore-default when the narration shot has no own animations', () => {
+		// 旁白属于 shot-2，时间轴上只有 shot-1 的动画：没有"默认绑定"可言。
+		const timeline = buildTimeline([
+			visualClip('vis-1', 0, 9000),
+			animationClip('anim-1', 2000),
+			narrationClip('narr-1', 8000, undefined, 'shot-2'),
+			subtitleClip('sub-1', 8000),
+		]);
+		const changes: TimelineModel[] = [];
+		act(() => {
+			root.render(
+				<MultiTrackTimeline
+					timeline={timeline}
+					onChange={(next) => changes.push(next)}
+					onSelectSource={() => {}}
+					onPlayAll={() => {}}
+				/>,
+			);
+		});
+		fire(clipCard('narr-1'), 'contextmenu');
+		const item = findByText('恢复默认绑定') as HTMLButtonElement;
+		expect(item).not.toBeNull();
+		expect(item.disabled).toBeTruthy();
+		expect(item.getAttribute('title')).toBe('当前分镜没有自己的动画');
+		fire(item, 'click');
+		expect(changes).toHaveLength(0);
 	});
 
 	it('locates the shot from the animation context menu', () => {

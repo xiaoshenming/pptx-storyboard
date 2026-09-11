@@ -64,7 +64,7 @@ export function TimelineClipContextMenu({
 		run();
 		onClose();
 	};
-	const items: { label: string; disabled?: boolean; onSelect: () => void }[] = [];
+	const items: { label: string; disabled?: boolean; title?: string; onSelect: () => void }[] = [];
 	if (clip.kind === 'narration') {
 		// 未绑定时命令由模型层拒绝，条目保持禁用态以提示不可用。
 		items.push({
@@ -73,12 +73,17 @@ export function TimelineClipContextMenu({
 			onSelect: closeAfter(() => onLockToggle(!clip.binding?.locked)),
 		});
 		items.push({ label: '解除绑定', disabled: !clip.binding, onSelect: closeAfter(onDetach) });
-		if (defaultBinding) {
-			items.push({
-				label: '恢复默认绑定',
-				onSelect: closeAfter(() => onRebindDefault(defaultBinding)),
-			});
-		}
+		// 同分镜没有动画时没有"默认"可言（跨分镜建议有误导性），条目禁用。
+		items.push({
+			label: '恢复默认绑定',
+			disabled: !defaultBinding,
+			title: defaultBinding ? undefined : '当前分镜没有自己的动画',
+			onSelect: closeAfter(() => {
+				if (defaultBinding) {
+					onRebindDefault(defaultBinding);
+				}
+			}),
+		});
 	} else if (clip.kind === 'animation' && clip.sourceId) {
 		const sourceId = clip.sourceId;
 		items.push({ label: '定位到该动画', onSelect: closeAfter(() => onLocateSource(sourceId)) });
@@ -105,6 +110,7 @@ export function TimelineClipContextMenu({
 						type='button'
 						role='menuitem'
 						disabled={item.disabled}
+						title={item.title}
 						onClick={item.onSelect}
 						className='block w-full px-3 py-1.5 text-left text-slate-200 hover:bg-white/10 disabled:cursor-default disabled:text-slate-600 disabled:hover:bg-transparent'
 					>

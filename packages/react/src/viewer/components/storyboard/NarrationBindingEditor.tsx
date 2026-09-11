@@ -1,28 +1,39 @@
 import React from 'react';
 import { LuLink } from 'react-icons/lu';
 
-import { defaultBindingForNarration } from './narration-binding-actions';
-import { presetClassLabel } from './storyboard-animation-labels';
+import {
+	animationClipOptionLabel,
+	animationMetadata,
+	bindingOutcomePreview,
+	splitAnimationClips,
+	suggestedAnchorId,
+} from './narration-binding-view-model';
 import {
 	bindingBadgeText,
 	createTimelineBinding,
 	createTimelineModel,
 	createTimelineTrack,
 	describeTimelineBinding,
-	estimateScriptDuration,
 } from './timeline';
-import type { TimelineBinding, TimelineBindingMode, TimelineClip } from './timeline';
+import type { TimelineBinding, TimelineBindingMode, TimelineClip, TimelineModel } from './timeline';
+
+// 兼容再导出：StoryboardScriptPanel 与既有测试从这里取这些名字。
+export {
+	animationClipOptionLabel,
+	scriptDriftFeedback,
+	suggestedAnchorId,
+} from './narration-binding-view-model';
+export type { ScriptDriftFeedback } from './narration-binding-view-model';
 
 export interface NarrationBindingEditorProps {
 	narrationClip?: TimelineClip;
 	animationClips: TimelineClip[];
 	onChange: (binding: TimelineBinding | undefined) => void;
-}
-
-interface AnimationClipMetadata {
-	anchorLabel?: string;
-	targetLabel?: string;
-	presetClass?: string;
+	/**
+	 * Real timeline for the outcome preview; when absent one is derived from
+	 * `animationClips` (the binding maths only reads the animation track).
+	 */
+	timeline?: TimelineModel;
 }
 
 const BINDING_MODES: readonly TimelineBindingMode[] = [
@@ -32,101 +43,87 @@ const BINDING_MODES: readonly TimelineBindingMode[] = [
 ];
 
 const FREE_TIME_OPTION = '自由时间（未绑定）';
+const OWN_GROUP_LABEL = '本分镜的动画';
+const OTHER_GROUP_LABEL = '其他分镜的动画（高级）';
+export const BINDING_HINT =
+	'绑定后，此旁白的开始时间会跟随所选动画：动画同时=与动画一起出现，动画前=在动画开始前讲完，动画后=等动画播完再讲。';
+export const STATIC_SHOT_HINT =
+	'当前分镜没有自己的动画，旁白保持自由时间即可。如需跟随其他分镜的动画，可在时间轴拖动旁白。';
+export const STATIC_SHOT_ADVANCED = '高级：跟随其他分镜动画';
 
-function animationMetadata(clip: TimelineClip): AnimationClipMetadata {
-	return (clip.metadata ?? {}) as AnimationClipMetadata;
-}
-
-/** `A1 · 进入 · 数字 60`, the canonical option label for an animation anchor. */
-export function animationClipOptionLabel(clip: TimelineClip): string {
-	const meta = animationMetadata(clip);
-	const target = meta.targetLabel ?? clip.label;
-	return [meta.anchorLabel ?? clip.id, presetClassLabel(meta.presetClass), target]
-		.filter(Boolean)
-		.join(' · ');
-}
-
-/**
- * Default anchor suggestion for an unbound narration clip. Delegates to the
- * canonical `defaultBindingForNarration` (earliest animation of the same shot
- * by startMs, else the first animation on the timeline) so the editor, the
- * context menu and the drop logic share one default; returns its anchorId.
- */
-export function suggestedAnchorId(
-	animationClips: TimelineClip[],
-	sourceId?: string,
-): string | undefined {
-	const timeline = createTimelineModel([createTimelineTrack('animation', animationClips)]);
-	const probe: TimelineClip = {
-		id: 'suggested-anchor-probe',
-		trackId: 'track-narration',
-		kind: 'narration',
-		startMs: 0,
-		durationMs: 0,
-		sourceId,
-	};
-	return defaultBindingForNarration(timeline, probe)?.anchorId;
-}
-
-export interface ScriptDriftFeedback {
-	direction: 'longer' | 'shorter';
-	/** Absolute drift in seconds, one decimal place. */
-	seconds: string;
-}
-
-/**
- * D1 feedback: compares the script's estimated narration duration against the
- * narration clip's current duration. Returns undefined when within tolerance
- * (no user-facing warning needed).
- */
-export function scriptDriftFeedback(
-	script: string,
-	currentDurationMs: number | undefined,
-	toleranceMs = 500,
-): ScriptDriftFeedback | undefined {
-	if (currentDurationMs === undefined) {
-		return undefined;
-	}
-	const driftMs = estimateScriptDuration(script) - currentDurationMs;
-	if (Math.abs(driftMs) <= toleranceMs) {
-		return undefined;
-	}
-	return {
-		direction: driftMs > 0 ? 'longer' : 'shorter',
-		seconds: (Math.abs(driftMs) / 1000).toFixed(1),
-	};
-}
-
-function unavailableState(): React.ReactElement {
+function EditorPanel({ children }: { children: React.ReactNode }): React.ReactElement {
 	return (
 		<div className='rounded-xl border border-slate-200 p-4'>
-			<p className='text-sm font-semibold text-slate-800'>动画绑定</p>
-			<p className='mt-2 text-xs text-slate-400'>当前分镜没有可绑定的动画</p>
+			<div className='mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800'>
+				<LuLink /> 动画绑定
+			</div>
+			{children}
 		</div>
 	);
 }
 
-// 契约说明（工单 C3）：完全受控组件，不做本地 state；每次编辑都通过
-// onChange(createTimelineBinding(...)) 抛出完整 binding（保留未变字段），
-// 解绑抛 undefined。未绑定时先选锚点才会以"动画同时 / 0ms / 不锁定"
-// 为默认建立绑定，其余控件在未绑定期间禁用。
-export function NarrationBindingEditor({
+function unavailableState(): React.ReactElement {
+	return (
+		<EditorPanel>
+			<p className='text-xs text-slate-400'>当前分镜没有可绑定的动画</p>
+		</EditorPanel>
+	);
+}
+
+interface BindingFormProps {
+	narrationClip: TimelineClip;
+	animationClips: TimelineClip[];
+	timeline: TimelineModel;
+	onChange: (binding: TimelineBinding | undefined) => void;
+}
+
+function renderGroup(label: string, clips: TimelineClip[]): React.ReactElement | null {
+	if (clips.length === 0) {
+		return null;
+	}
+	return (
+		<optgroup key={label} label={label}>
+			{clips.map((clip) => (
+				<option key={clip.id} value={clip.id}>
+					{animationClipOptionLabel(clip)}
+				</option>
+			))}
+		</optgroup>
+	);
+}
+
+function UnboundSuggestion({
+	animationClips,
+	sourceId,
+}: {
+	animationClips: TimelineClip[];
+	sourceId: string | undefined;
+}): React.ReactElement | null {
+	const anchorId = suggestedAnchorId(animationClips, sourceId);
+	const suggestion = anchorId ? animationClips.find((clip) => clip.id === anchorId) : undefined;
+	if (!suggestion) {
+		return null;
+	}
+	return (
+		<p className='mt-2 text-[11px] text-slate-400'>
+			建议绑定：{animationClipOptionLabel(suggestion)}（本分镜第一个出现内容的动画）
+		</p>
+	);
+}
+
+function BindingForm({
 	narrationClip,
 	animationClips,
+	timeline,
 	onChange,
-}: NarrationBindingEditorProps): React.ReactElement {
-	if (!narrationClip || animationClips.length === 0) {
-		return unavailableState();
-	}
+}: BindingFormProps): React.ReactElement {
 	const binding = narrationClip.binding;
+	const { own, others } = splitAnimationClips(animationClips, narrationClip.sourceId);
 	const anchorClip = binding
 		? animationClips.find((clip) => clip.id === binding.anchorId)
 		: undefined;
 	const anchorLabel = anchorClip ? (animationMetadata(anchorClip).anchorLabel ?? '') : '';
-	const suggestionId = suggestedAnchorId(animationClips, narrationClip.sourceId);
-	const suggestion = suggestionId
-		? animationClips.find((clip) => clip.id === suggestionId)
-		: undefined;
+	const preview = bindingOutcomePreview(timeline, narrationClip);
 	const update = (patch: Partial<TimelineBinding>): void => {
 		if (!binding) {
 			return;
@@ -141,12 +138,9 @@ export function NarrationBindingEditor({
 		);
 	};
 	return (
-		<div className='rounded-xl border border-slate-200 p-4'>
-			<div className='mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800'>
-				<LuLink /> 动画绑定
-			</div>
+		<>
 			<label className='block text-xs text-slate-500'>
-				锚点动画
+				跟随动画（锚点）
 				<select
 					value={binding?.anchorId ?? ''}
 					onChange={(event) => {
@@ -167,13 +161,11 @@ export function NarrationBindingEditor({
 					className='mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-orange-400 focus:bg-white'
 				>
 					<option value=''>{FREE_TIME_OPTION}</option>
-					{animationClips.map((clip) => (
-						<option key={clip.id} value={clip.id}>
-							{animationClipOptionLabel(clip)}
-						</option>
-					))}
+					{renderGroup(OWN_GROUP_LABEL, own)}
+					{renderGroup(OTHER_GROUP_LABEL, others)}
 				</select>
 			</label>
+			{binding && preview && <p className='mt-2 text-[11px] text-amber-600'>{preview}</p>}
 			<div className='mt-3'>
 				<p className='text-xs text-slate-500'>绑定模式</p>
 				<div className='mt-1 flex rounded-lg bg-slate-100 p-1 text-xs'>
@@ -243,11 +235,53 @@ export function NarrationBindingEditor({
 			>
 				解除绑定
 			</button>
-			{!binding && suggestion && (
-				<p className='mt-2 text-[11px] text-slate-400'>
-					建议绑定：{animationClipOptionLabel(suggestion)}
-				</p>
+			{!binding && (
+				<UnboundSuggestion animationClips={animationClips} sourceId={narrationClip.sourceId} />
 			)}
-		</div>
+		</>
+	);
+}
+
+// 契约说明（工单 C3）：完全受控组件，不做本地 state；每次编辑都通过
+// onChange(createTimelineBinding(...)) 抛出完整 binding（保留未变字段），
+// 解绑抛 undefined。未绑定时先选锚点才会以"动画同时 / 0ms / 不锁定"
+// 为默认建立绑定，其余控件在未绑定期间禁用。
+export function NarrationBindingEditor({
+	narrationClip,
+	animationClips,
+	onChange,
+	timeline,
+}: NarrationBindingEditorProps): React.ReactElement {
+	if (!narrationClip || animationClips.length === 0) {
+		return unavailableState();
+	}
+	const { own } = splitAnimationClips(animationClips, narrationClip.sourceId);
+	const form = (
+		<BindingForm
+			narrationClip={narrationClip}
+			animationClips={animationClips}
+			timeline={timeline ?? createTimelineModel([createTimelineTrack('animation', animationClips)])}
+			onChange={onChange}
+		/>
+	);
+	if (own.length === 0) {
+		// 静态分镜：能力保留在折叠的"高级"区里，但不打扰主流程。
+		return (
+			<EditorPanel>
+				<p className='text-xs leading-5 text-slate-500'>{STATIC_SHOT_HINT}</p>
+				<details className='mt-3'>
+					<summary className='cursor-pointer select-none text-xs font-semibold text-slate-600'>
+						{STATIC_SHOT_ADVANCED}
+					</summary>
+					<div className='mt-3'>{form}</div>
+				</details>
+			</EditorPanel>
+		);
+	}
+	return (
+		<EditorPanel>
+			<p className='text-xs leading-5 text-slate-500'>{BINDING_HINT}</p>
+			<div className='mt-3'>{form}</div>
+		</EditorPanel>
 	);
 }
