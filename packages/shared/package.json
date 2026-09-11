@@ -80,7 +80,7 @@
 		"@types/dompurify": "^3.2.0",
 		"@types/three": "^0.185.4",
 		"ai": "^7.0.44",
-		"fake-indexeddb": "^6.2.2",
+		"fake-indexeddb": "^6.2.5",
 		"pptx-viewer-core": "workspace:*",
 		"pptx-viewer-mcp": "workspace:*",
 		"three": "^0.185.1",
