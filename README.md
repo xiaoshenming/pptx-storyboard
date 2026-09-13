@@ -9,6 +9,8 @@
 > 当前版本 `storyboard-video-v0.2.0` · 实测基线：19 页课件 → 127 分镜 →
 > 6 分 56 秒 1080p 成片，渲染流水线 91 秒
 
+![分镜视频工作台](docs/storyboard-video/screenshots/storyboard-studio.png)
+
 ---
 
 ## 核心能力
@@ -35,17 +37,23 @@ afterEffect` 三种触发语义编译成点击组，组内每一步保留 PowerP
 
 画面 / 动画 / 旁白 / 字幕四轨时间轴：
 
+![多轨时间轴：动画卡标注锚点与目标元素，菱形锚点与同起动画括号组](docs/storyboard-video/screenshots/timeline.png)
+
 - **点击动画卡即绑定**：旁白跟着那个动画一起出现，再点一次解除；
 - 8px 磁吸锚点、拖拽改时间、后续片段自动顺延（ripple）；
 - 真实播放头：空格播放、方向键逐帧、时间尺拖拽定位；
 - 绑定是显式数据模型（`TimelineBinding`），改文案只重算配音时长，
   锚点永不被破坏，导出 manifest 附带绑定回执可追溯。
 
+![绑定编辑器：点击动画卡后立即显示绑定徽标与后果预览](docs/storyboard-video/screenshots/click-to-bind.png)
+
 ### 5. GPU 渲染流水线
 
 客户端低内存捕获每个分镜的关键状态帧 → 8 路 NVENC 并行编码分片 →
 拼接、按毫秒锚点混音、生成 SRT → `ffprobe` 完整解码 + SHA-256 验收。
 19 页课件从点击"生成视频"到拿片约 2 分钟（含状态捕获）。
+
+![成片效果：口算乘法课件的关键帧](docs/storyboard-video/screenshots/video-frames.png)
 
 ---
 
