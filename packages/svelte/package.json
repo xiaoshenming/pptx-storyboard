@@ -73,7 +73,7 @@
 		"pptx-viewer-mcp": "workspace:*"
 	},
 	"devDependencies": {
-		"@ai-sdk/svelte": "^5.0.31",
+		"@ai-sdk/svelte": "^5.0.93",
 		"@microsoft/api-extractor": "^7.58.13",
 		"@sveltejs/vite-plugin-svelte": "^7.2.0",
 		"ai": ">=6 <8",
@@ -93,7 +93,7 @@
 		"yjs": "^13.6.32"
 	},
 	"peerDependencies": {
-		"@ai-sdk/svelte": "^5.0.31",
+		"@ai-sdk/svelte": "^5.0.93",
 		"ai": ">=6 <8",
 		"svelte": "^5.0.0"
 	},
