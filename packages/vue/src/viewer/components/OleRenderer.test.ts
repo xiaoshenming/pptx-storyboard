@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import type { PptxElement } from 'pptx-viewer-core';
 import { getOleTypeColor } from 'pptx-viewer-shared';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, vi, it } from 'vitest';
 
 import OleRenderer from './OleRenderer.vue';
 
@@ -35,7 +35,7 @@ describe('oleRenderer', () => {
 		expect(wrapper.text()).toContain('Embedded Object');
 	});
 
-	it('renders the preview image with a type badge when previewImageData exists', () => {
+	it('renders the preview image without a type badge when previewImageData exists', () => {
 		const src = 'data:image/png;base64,AAAA';
 		const wrapper = mount(OleRenderer, {
 			props: { element: ole({ previewImageData: src }), zIndex: 0 },
@@ -43,7 +43,7 @@ describe('oleRenderer', () => {
 		const img = wrapper.get('img');
 		expect(img.attributes('src')).toBe(src);
 		// Badge text for excel.
-		expect(wrapper.text()).toContain('EXCEL');
+		expect(wrapper.find('.pptx-vue-ole-badge').exists()).toBeFalsy();
 	});
 
 	it('shows no action bar when there is no embedded payload', () => {

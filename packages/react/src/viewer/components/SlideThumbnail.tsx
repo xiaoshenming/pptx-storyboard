@@ -1,6 +1,6 @@
 import type { PptxElement, PptxSlide } from 'pptx-viewer-core';
 import { buildPreviewElements } from 'pptx-viewer-shared';
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { SLIDE_NAV_THUMBNAIL_WIDTH, SLIDE_TRANSITION_OPTIONS } from '../constants';
@@ -31,8 +31,9 @@ function SlideThumbnailImpl({
 }: SlideThumbnailProps): React.ReactElement {
 	const safeCanvasWidth = Math.max(canvasSize.width, 1);
 	const safeCanvasHeight = Math.max(canvasSize.height, 1);
-	const scale = SLIDE_NAV_THUMBNAIL_WIDTH / safeCanvasWidth;
-	const previewHeight = Math.max(56, Math.round(safeCanvasHeight * scale));
+	const frameRef = useRef<HTMLDivElement>(null);
+	const [previewWidth, setPreviewWidth] = useState(SLIDE_NAV_THUMBNAIL_WIDTH);
+	const scale = previewWidth / safeCanvasWidth;
 	const previewElements = buildPreviewElements(slide, templateElements);
 	const slideFieldContext = deriveSlideFieldContext(fieldContext, slide);
 	const { t } = useTranslation();
@@ -43,10 +44,40 @@ function SlideThumbnailImpl({
 			})()
 		: undefined;
 
+	useEffect(() => {
+		const frame = frameRef.current;
+		if (!frame) {
+			return;
+		}
+
+		const updateWidth = (width: number) => {
+			if (width > 0) {
+				setPreviewWidth(width);
+			}
+		};
+
+		updateWidth(frame.getBoundingClientRect().width);
+		if (typeof ResizeObserver === 'undefined') {
+			return;
+		}
+
+		const observer = new ResizeObserver(([entry]) => {
+			if (entry) {
+				updateWidth(entry.contentRect.width);
+			}
+		});
+		observer.observe(frame);
+		return () => observer.disconnect();
+	}, []);
+
 	return (
 		<div
+			ref={frameRef}
 			className='relative w-full overflow-hidden rounded border border-border bg-white'
-			style={{ height: previewHeight, ...getReactSlideBackgroundStyle(slide) }}
+			style={{
+				aspectRatio: `${safeCanvasWidth} / ${safeCanvasHeight}`,
+				...getReactSlideBackgroundStyle(slide),
+			}}
 		>
 			<div
 				className='absolute top-0 left-0 origin-top-left'

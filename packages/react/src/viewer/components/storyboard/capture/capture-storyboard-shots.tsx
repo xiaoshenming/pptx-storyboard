@@ -91,6 +91,7 @@ function createReactWorker(
 
 	return {
 		async run(input): Promise<Blob> {
+			const startedAt = performance.now();
 			signal?.throwIfAborted();
 			const animation =
 				animationCache.get(input.slide.id) ?? compileSlideAnimationExport(input.slide);
@@ -124,9 +125,21 @@ function createReactWorker(
 			await waitForDomTick(signal);
 			await waitForDomTick(signal);
 			signal?.throwIfAborted();
-			const canvas = await renderElementToCanvas(stage, rasterScale, '#ffffff');
+			const readyAt = performance.now();
+			const canvas = await renderElementToCanvas(stage, rasterScale, '#ffffff', true);
+			const capturedAt = performance.now();
 			signal?.throwIfAborted();
-			return canvasToPng(canvas);
+			const png = await canvasToPng(canvas);
+			console.debug(
+				'[storyboard-capture]',
+				JSON.stringify({
+					shotId: input.shot.id,
+					prepareMs: Math.round(readyAt - startedAt),
+					captureMs: Math.round(capturedAt - readyAt),
+					pngMs: Math.round(performance.now() - capturedAt),
+				}),
+			);
+			return png;
 		},
 		dispose(): void {
 			flushSync(() => root.unmount());
@@ -146,6 +159,7 @@ export async function captureStoryboardShotsAsPng({
 	signal,
 	onProgress,
 }: CaptureStoryboardShotsOptions): Promise<CapturedStoryboardFrame[]> {
+	const startedAt = performance.now();
 	const workerCount = normalizedConcurrency(concurrency, shots.length);
 	if (shots.length === 0) {
 		return [];
@@ -176,5 +190,13 @@ export async function captureStoryboardShotsAsPng({
 		onComplete: (_png, index, completed) =>
 			onProgress?.({ completed, total: shots.length, index, shotId: shots[index].id }),
 	});
+	console.info(
+		'[storyboard-capture-complete]',
+		JSON.stringify({
+			shots: shots.length,
+			concurrency: workerCount,
+			elapsedMs: Math.round(performance.now() - startedAt),
+		}),
+	);
 	return pngs.map((png, index) => ({ index, shot: shots[index], png }));
 }

@@ -3,18 +3,20 @@ import { join } from 'node:path';
 
 import type { SynthesizedShotAudio } from '../render/video-renderer';
 import { TencentTtsService } from '../tts';
+import { getTtsProviderConfig } from '../tts/provider-config';
 import type { StoryboardSynthesizer, StoryboardSynthesisInput } from './job-runner';
 
 function credentials(): { secretId: string; secretKey: string; securityToken?: string } {
-	const secretId = process.env.TENCENT_TTS_SECRET_ID?.trim() || '';
-	const secretKey = process.env.TENCENT_TTS_SECRET_KEY?.trim() || '';
+	const config = getTtsProviderConfig();
+	const secretId = config.tencentSecretId;
+	const secretKey = config.tencentSecretKey;
 	if (!secretId || !secretKey) {
 		throw new Error('TENCENT_TTS_CREDENTIALS_MISSING');
 	}
 	return {
 		secretId,
 		secretKey,
-		securityToken: process.env.TENCENT_TTS_SECURITY_TOKEN?.trim() || undefined,
+		securityToken: config.tencentSecurityToken || undefined,
 	};
 }
 
@@ -26,7 +28,7 @@ export class TencentStoryboardSynthesizer implements StoryboardSynthesizer {
 		}
 		const service = new TencentTtsService({
 			credentials: credentials(),
-			region: process.env.TENCENT_TTS_REGION?.trim() || undefined,
+			region: getTtsProviderConfig().tencentRegion || undefined,
 			voiceType: input.voiceType,
 			speed: input.speed,
 			sampleRate: 16000,

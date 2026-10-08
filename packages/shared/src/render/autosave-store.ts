@@ -79,7 +79,11 @@ export async function deleteOldestAutosaveEntry(): Promise<boolean> {
 	});
 }
 
-function putAutosaveRecord(filePath: string, data: Uint8Array): Promise<boolean> {
+function putAutosaveRecord(
+	filePath: string,
+	data: Uint8Array,
+	timestamp: number,
+): Promise<boolean> {
 	return openAutosaveDb().then(
 		(db) =>
 			new Promise<boolean>((resolve, reject) => {
@@ -88,7 +92,7 @@ function putAutosaveRecord(filePath: string, data: Uint8Array): Promise<boolean>
 				store.put({
 					key: filePath,
 					data,
-					timestamp: Date.now(),
+					timestamp,
 					size: data.byteLength,
 				});
 				tx.oncomplete = () => {
@@ -214,8 +218,12 @@ export async function deleteAutosaveSnapshot(filePath: string): Promise<boolean>
  * dropped and the write retried once.
  */
 export async function saveAutosaveSnapshot(filePath: string, data: Uint8Array): Promise<boolean> {
+	// Capture before I/O so a slow earlier save cannot replace a newer project save.
+	const timestamp = Date.now();
+	const { persistProjectAutosave } = await import('./project-library-store');
+	await persistProjectAutosave(filePath, data, timestamp);
 	try {
-		return await putAutosaveRecord(filePath, data);
+		return await putAutosaveRecord(filePath, data, timestamp);
 	} catch (err) {
 		const errName = err instanceof Error || err instanceof DOMException ? err.name : '';
 		if (errName !== 'QuotaExceededError') {
@@ -225,6 +233,6 @@ export async function saveAutosaveSnapshot(filePath: string, data: Uint8Array): 
 		if (!deleted) {
 			throw err;
 		}
-		return putAutosaveRecord(filePath, data);
+		return putAutosaveRecord(filePath, data, timestamp);
 	}
 }

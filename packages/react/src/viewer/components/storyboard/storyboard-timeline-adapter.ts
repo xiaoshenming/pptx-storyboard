@@ -103,7 +103,11 @@ export function normalizeNarrationDurations(
 	return shots.reduce(
 		(current, shot) =>
 			shot.script.trim()
-				? applyNarrationDuration(current, shot.id, estimateScriptDuration(shot.script) + 250)
+				? applyNarrationDuration(
+						updateTimelineScript(current, shot.id, shot.script),
+						shot.id,
+						estimateScriptDuration(shot.script) + 250,
+					)
 				: current,
 		timeline,
 	);
@@ -154,19 +158,45 @@ export function updateTimelineScript(
 	shotId: string,
 	script: string,
 ): TimelineModel {
+	const visual = timeline.tracks
+		.find((t) => t.kind === 'visual')
+		?.clips.find((c) => c.sourceId === shotId);
 	return createTimelineModel(
-		timeline.tracks.map((track) => ({
-			...track,
-			clips: track.clips.map((clip) =>
-				(track.kind === 'narration' || track.kind === 'subtitle') && clip.sourceId === shotId
+		timeline.tracks.map((track) => {
+			if (track.kind !== 'narration' && track.kind !== 'subtitle') {
+				return track;
+			}
+			const existing = track.clips.find((c) => c.sourceId === shotId);
+			const clips = track.clips.map((clip) =>
+				clip.sourceId === shotId
 					? {
 							...clip,
 							label: script,
-							script: clip.script ? { ...clip.script, text: script } : undefined,
+							script: {
+								...clip.script,
+								id: clip.script?.id ?? clip.id,
+								text: script,
+								role: track.kind as 'narration' | 'subtitle',
+								sourceId: shotId,
+							},
 						}
 					: clip,
-			),
-		})),
+			);
+			if (!existing && visual && script.trim()) {
+				const id = `${track.kind === 'narration' ? 'script' : 'subtitle'}-${shotId}`;
+				clips.push({
+					id,
+					trackId: track.id,
+					kind: track.kind,
+					sourceId: shotId,
+					startMs: visual.startMs,
+					durationMs: visual.durationMs,
+					label: script,
+					script: { id, text: script, role: track.kind, sourceId: shotId },
+				});
+			}
+			return { ...track, clips: sortClips(clips) };
+		}),
 		timeline.frameRate,
 	);
 }

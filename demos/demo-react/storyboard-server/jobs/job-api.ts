@@ -249,6 +249,7 @@ export function createStoryboardJobMiddleware(
 					error instanceof Error && /^[A-Z_]+(?::[a-zA-Z0-9_./-]+)?$/u.test(error.message)
 						? error.message
 						: 'INVALID_JOB_ARCHIVE';
+				console.warn('[storyboard] create rejected:', code);
 				return sendJson(response, 400, { error: code });
 			}
 		}

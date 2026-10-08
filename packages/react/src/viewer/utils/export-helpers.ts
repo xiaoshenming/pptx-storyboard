@@ -7,7 +7,7 @@
  * sanitize the filename (callers pass a known-safe name): the sanitizing variant
  * lives in `dom-helpers`.
  */
-import { downloadBlob, downloadDataUrl } from 'pptx-viewer-shared';
+import { createCaptureScopeFilter, downloadBlob, downloadDataUrl } from 'pptx-viewer-shared';
 
 import { renderToCanvas } from '../../lib/canvas-export';
 
@@ -68,7 +68,9 @@ export async function renderElementToCanvas(
 	element: HTMLElement,
 	scale: number = 2,
 	backgroundColor?: string,
+	isolateCapture = false,
 ): Promise<HTMLCanvasElement> {
+	const outsideCapture = isolateCapture ? createCaptureScopeFilter(element) : undefined;
 	const canvas = await renderToCanvas(element, {
 		scale,
 		useCORS: true,
@@ -77,6 +79,9 @@ export async function renderElementToCanvas(
 		logging: false,
 		// Ignore elements that interfere with export (selection overlays, snap lines, etc.)
 		ignoreElements: (el: Element) => {
+			if (outsideCapture?.(el)) {
+				return true;
+			}
 			const htmlEl = el as HTMLElement;
 			// Skip elements with data-export-ignore attribute
 			if (htmlEl.dataset?.exportIgnore === 'true') {

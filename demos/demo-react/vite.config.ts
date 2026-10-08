@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 import { buildStamp } from '../build-stamp';
+import { accessPassword } from './access-password';
 import { storyboardApi } from './storyboard-api';
 
 export default defineConfig({
@@ -13,6 +14,7 @@ export default defineConfig({
 	// deployed to GitHub Pages. CI sets DEMO_BASE to the subpath.
 	base: process.env.DEMO_BASE ?? '/',
 	plugins: [
+		accessPassword(),
 		react(),
 		tailwindcss(),
 		buildStamp(path.resolve(__dirname, '../../packages/react/package.json')),
@@ -27,6 +29,27 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: {
+			'pptx-viewer-shared/theme': path.resolve(
+				__dirname,
+				'../../packages/shared/src/theme/index.ts',
+			),
+			'pptx-viewer-shared/loader': path.resolve(
+				__dirname,
+				'../../packages/shared/src/loader/index.ts',
+			),
+			'pptx-viewer-shared/smartart-3d': path.resolve(
+				__dirname,
+				'../../packages/shared/src/smartart-3d/index.ts',
+			),
+			'pptx-viewer-shared/i18n': path.resolve(__dirname, '../../packages/shared/src/i18n/index.ts'),
+			'pptx-viewer-shared/ai': path.resolve(__dirname, '../../packages/shared/src/ai/index.ts'),
+			'pptx-viewer-shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
+			'pptx-viewer-mcp/schemas': path.resolve(
+				__dirname,
+				'../../packages/tools/src/schemas/index.ts',
+			),
+			'pptx-viewer-mcp/codec': path.resolve(__dirname, '../../packages/tools/src/codec/index.ts'),
+			'pptx-viewer-mcp': path.resolve(__dirname, '../../packages/tools/src/index.ts'),
 			'pptx-viewer-core/converter': path.resolve(
 				__dirname,
 				'../../packages/core/src/converter/index.ts',

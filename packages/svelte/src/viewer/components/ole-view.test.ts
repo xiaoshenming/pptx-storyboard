@@ -49,7 +49,7 @@ function oleElement(overrides: Record<string, unknown>): PptxElement {
 }
 
 describe('oleView', () => {
-	it('renders the preview image with a type badge overlay', () => {
+	it('renders the preview image without an application badge overlay', () => {
 		const target = mountEl(
 			oleElement({
 				oleObjectType: 'excel',
@@ -68,8 +68,7 @@ describe('oleView', () => {
 		expect(img?.getAttribute('src')).toBe(PNG_DATA_URL);
 
 		const badge = node?.querySelector('svg.pptx-svelte-ole-badge');
-		expect(badge?.textContent?.trim()).toBe('EXCEL');
-		expect(badge?.querySelector('rect')?.getAttribute('fill')).toBe('#217346');
+		expect(badge).toBeNull();
 		expect(node?.querySelector('.pptx-svelte-ole-placeholder')).toBeNull();
 	});
 

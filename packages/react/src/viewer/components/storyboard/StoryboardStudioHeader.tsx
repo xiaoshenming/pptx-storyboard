@@ -12,6 +12,7 @@ interface StoryboardStudioHeaderProps {
 	saveStatus: StoryboardSaveStatus;
 	exportStatus: string;
 	exporting: boolean;
+	jobStatus?: React.ReactNode;
 	canGenerate: boolean;
 	canCancel: boolean;
 	onClose: () => void;
@@ -28,6 +29,7 @@ export function StoryboardStudioHeader({
 	saveStatus,
 	exportStatus,
 	exporting,
+	jobStatus,
 	canGenerate,
 	canCancel,
 	onClose,
@@ -35,25 +37,25 @@ export function StoryboardStudioHeader({
 	onCancel,
 }: StoryboardStudioHeaderProps): React.ReactElement {
 	return (
-		<header className='flex h-16 shrink-0 items-center border-b border-slate-200 bg-white px-5'>
+		<header className='flex h-14 shrink-0 items-center border-b border-slate-700 bg-[#0c0d12] px-4 text-slate-100'>
 			<button
 				type='button'
 				onClick={onClose}
-				className='mr-3 rounded-lg p-2 text-slate-500 hover:bg-slate-100'
+				className='mr-3 rounded-lg p-2 text-slate-400 hover:bg-white/10'
 				title='返回 PPT 编辑器'
 			>
 				<LuArrowLeft className='h-5 w-5' />
 			</button>
-			<div className='flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-rose-500 text-white'>
+			<div className='flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-pink-500 to-rose-500 text-white'>
 				<LuClapperboard className='h-5 w-5' />
 			</div>
 			<div className='ml-3 min-w-0'>
 				<h1 className='truncate text-sm font-bold'>PPT 分镜视频工作台</h1>
-				<p className='max-w-[420px] truncate text-xs text-slate-400'>
+				<p className='max-w-[420px] truncate text-xs text-slate-500'>
 					{fileName || '未命名演示文稿'}
 				</p>
 			</div>
-			<div className='ml-6 hidden items-center gap-4 text-xs text-slate-500 md:flex'>
+			<div className='ml-6 hidden items-center gap-4 text-xs text-slate-400 md:flex'>
 				<span>{pageCount} 页</span>
 				<span>{shotCount} 个分镜</span>
 				<span>预计 {durationLabel}</span>
@@ -68,15 +70,16 @@ export function StoryboardStudioHeader({
 					{projectId}
 				</span>
 				{exportStatus && (
-					<span className='hidden max-w-52 truncate text-xs text-slate-500 lg:inline'>
+					<span title={exportStatus} role='status' className='max-w-72 text-xs text-slate-500'>
 						{exportStatus}
 					</span>
 				)}
+				{jobStatus}
 				{canCancel && (
 					<button
 						type='button'
 						onClick={onCancel}
-						className='rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50'
+						className='rounded-lg border border-slate-600 px-3 py-2 text-xs text-slate-300 hover:bg-white/10'
 					>
 						取消
 					</button>
@@ -85,7 +88,7 @@ export function StoryboardStudioHeader({
 					type='button'
 					onClick={onGenerate}
 					disabled={exporting || !canGenerate}
-					className='flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-orange-200 hover:opacity-90 disabled:opacity-60'
+					className='flex items-center gap-2 rounded-lg bg-gradient-to-r from-pink-500 to-rose-500 px-5 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-60'
 				>
 					{exporting ? (
 						<LuLoaderCircle className='h-4 w-4 animate-spin' />

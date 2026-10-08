@@ -134,6 +134,31 @@
 	background: transparent;
 }
 
+/* Storyboard timeline: a compact, high-contrast horizontal scrub bar. */
+:where([data-pptx-viewer]) .pptx-storyboard-timeline-scroll {
+	scrollbar-width: thin;
+	scrollbar-color: #fb923c rgb(255 255 255 / 14%);
+}
+
+:where([data-pptx-viewer]) .pptx-storyboard-timeline-scroll::-webkit-scrollbar {
+	width: 0;
+	height: 6px;
+}
+
+:where([data-pptx-viewer]) .pptx-storyboard-timeline-scroll::-webkit-scrollbar-track {
+	background: rgb(255 255 255 / 14%);
+	border-radius: 999px;
+}
+
+:where([data-pptx-viewer]) .pptx-storyboard-timeline-scroll::-webkit-scrollbar-thumb {
+	background-color: #fb923c;
+	border-radius: 999px;
+}
+
+:where([data-pptx-viewer]) .pptx-storyboard-timeline-scroll::-webkit-scrollbar-thumb:hover {
+	background-color: #fdba74;
+}
+
 /* ── Button press feedback ──────────────────────────────────────────
  * Subtle scale-down on press for all interactive elements in the
  * toolbar and status bar areas.

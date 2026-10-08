@@ -21,6 +21,7 @@ export interface SlidesPaneSidebarProps {
 	onSlideContextMenu: (e: React.MouseEvent, index: number) => void;
 	onMoveSlide: (fromIndex: number, toIndex: number) => void;
 	onAddSlide: () => void;
+	onDeleteSlides?: (indexes: number[]) => void;
 	onCollapse: () => void;
 	onAddSection?: (name: string, afterSlideIndex: number) => void;
 	onRenameSection?: (sectionId: string, newName: string) => void;

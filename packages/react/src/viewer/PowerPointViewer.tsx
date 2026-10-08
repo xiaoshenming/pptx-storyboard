@@ -188,6 +188,10 @@ export const PowerPointViewer = forwardRef<PowerPointViewerHandle, PowerPointVie
 			storyboardScriptEndpoint,
 			storyboardTtsEndpoint,
 			storyboardJobEndpoint,
+			storyboardProjectKey,
+			storyboardAutoGenerate = false,
+			storyboardAutoGenerateOptions,
+			onStoryboardGenerationProgress,
 		} = props;
 
 		useEffect(() => {
@@ -413,6 +417,11 @@ export const PowerPointViewer = forwardRef<PowerPointViewerHandle, PowerPointVie
 			activeSlide,
 			selectedElement,
 		} = state;
+		useEffect(() => {
+			if (storyboardAutoGenerate && slides.length > 0) {
+				setIsStoryboardOpen(true);
+			}
+		}, [storyboardAutoGenerate, slides.length]);
 
 		// ── Recent colours ("Most Recently Used") ─────────────────────
 		// Shared by every colour picker in BOTH the ribbon toolbar and the
@@ -1259,6 +1268,7 @@ export const PowerPointViewer = forwardRef<PowerPointViewerHandle, PowerPointVie
 
 				{isStoryboardOpen && slides.length > 0 && (
 					<StoryboardStudio
+						projectKey={storyboardProjectKey}
 						fileName={fileName}
 						slides={slides}
 						templateElementsBySlideId={state.templateElementsBySlideId}
@@ -1266,6 +1276,9 @@ export const PowerPointViewer = forwardRef<PowerPointViewerHandle, PowerPointVie
 						scriptEndpoint={storyboardScriptEndpoint}
 						ttsEndpoint={storyboardTtsEndpoint}
 						jobEndpoint={storyboardJobEndpoint}
+						autoGenerate={storyboardAutoGenerate}
+						autoGenerateOptions={storyboardAutoGenerateOptions}
+						onGenerationProgress={onStoryboardGenerationProgress}
 						onClose={() => setIsStoryboardOpen(false)}
 					/>
 				)}

@@ -4,6 +4,7 @@ import {
 	hollowTextFillStyle,
 	nestedTextDecorationStyle,
 	pieceLetterSpacing,
+	prefersEastAsiaFont,
 	resolveAutoFitFontScale,
 	resolveFontKerning,
 	resolveMetricTrackingPx,
@@ -113,7 +114,7 @@ export function renderParagraphRun(
 		DEFAULT_TEXT_FONT_SIZE) as number;
 	// `a:normAutofit/@fontScale` (e.g. 0.9 = 90%), resolved by the shared helper
 	// all five bindings use, so a body that shrinks its text shrinks it alike.
-	const baseFontSize = rawFontSize * resolveAutoFitFontScale(element.textStyle);
+	const baseFontSize = rawFontSize * resolveAutoFitFontScale(element.textStyle, element);
 	const baselineShift = baselineFraction !== 0 ? `${baselineFraction * baseFontSize}px` : undefined;
 
 	// Kerning → CSS font-kerning. OOXML `@kern` is a threshold: kerning applies
@@ -147,7 +148,13 @@ export function renderParagraphRun(
 	// string, so leaving `ea` bare while `latin` carries a chain made an
 	// identical typeface look distinct and emitted that clobbering span in the
 	// first place.
-	const scriptFonts = resolveScriptFontSet(segmentStyle, element.textStyle, baseFontFamily);
+	const resolvedScriptFonts = resolveScriptFontSet(segmentStyle, element.textStyle, baseFontFamily);
+	const effectiveBaseFontFamily = prefersEastAsiaFont(textValue)
+		? resolvedScriptFonts.eastAsia
+		: baseFontFamily;
+	const scriptFonts = prefersEastAsiaFont(textValue)
+		? { ...resolvedScriptFonts, latin: effectiveBaseFontFamily }
+		: resolvedScriptFonts;
 	const needsScriptFonts = hasDistinctScriptFonts(scriptFonts);
 
 	// Advance-width compensation on top of any authored spacing, so the browser
@@ -160,7 +167,7 @@ export function renderParagraphRun(
 			? (segmentStyle.characterSpacing / 100) * (96 / 72)
 			: 0;
 	const metricFont = {
-		fontFamily: baseFontFamily,
+		fontFamily: effectiveBaseFontFamily,
 		fontSizePx: baseFontSize * baselineFontScale,
 		bold: Boolean(segmentStyle.bold),
 		italic: Boolean(segmentStyle.italic),
@@ -180,7 +187,7 @@ export function renderParagraphRun(
 	const spanStyle: React.CSSProperties = { ...(run.style as React.CSSProperties) };
 	spanStyle.color = resolvedSegmentColor;
 	spanStyle.fontSize = baseFontSize * baselineFontScale;
-	spanStyle.fontFamily = baseFontFamily;
+	spanStyle.fontFamily = effectiveBaseFontFamily;
 	spanStyle.verticalAlign = baselineShift;
 	spanStyle.fontKerning = fontKerning;
 	spanStyle.letterSpacing = pieceLetterSpacing(
@@ -221,13 +228,13 @@ export function renderParagraphRun(
 		lines,
 		needsScriptFonts,
 		scriptFonts,
-		baseFontFamily,
+		effectiveBaseFontFamily,
 		findHighlights,
 		buildTabContext(
 			element.textStyle?.tabStops,
 			element.textStyle?.defaultTabSize,
 			baseFontSize,
-			baseFontFamily,
+			effectiveBaseFontFamily,
 			Boolean(segmentStyle.bold),
 			Boolean(segmentStyle.italic),
 		),

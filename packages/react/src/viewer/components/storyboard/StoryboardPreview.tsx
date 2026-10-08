@@ -1,5 +1,5 @@
 import type { PptxElement, PptxSlide } from 'pptx-viewer-core';
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { LuPause, LuPlay, LuRotateCcw } from 'react-icons/lu';
 
 import type { CanvasSize } from '../../types';
@@ -14,6 +14,7 @@ interface StoryboardPreviewProps {
 	onRestart: () => void;
 	progressMs?: number;
 	durationMs?: number;
+	subtitleText?: string;
 	stageRef?: React.RefObject<HTMLDivElement | null>;
 }
 
@@ -34,26 +35,47 @@ export function StoryboardPreview({
 	onRestart,
 	progressMs,
 	durationMs,
+	subtitleText,
 	stageRef,
 }: StoryboardPreviewProps): React.ReactElement {
+	const viewportRef = useRef<HTMLDivElement>(null);
+	const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+	useEffect(() => {
+		const element = viewportRef.current;
+		if (!element) {
+			return;
+		}
+		const update = () =>
+			setViewportSize({ width: element.clientWidth, height: element.clientHeight });
+		update();
+		const observer = new ResizeObserver(update);
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, []);
 	const thumbHeight = Math.max(
 		56,
 		Math.round((canvasSize.height / Math.max(canvasSize.width, 1)) * 160),
 	);
-	const previewScale = Math.min(4.8, 640 / 160, 410 / thumbHeight);
+	const previewScale = Math.max(
+		0.1,
+		Math.min(5.4, (viewportSize.width - 40) / 160, (viewportSize.height - 40) / thumbHeight),
+	);
 	const ratio = progressRatio(progressMs, durationMs);
 	return (
-		<section className='flex min-w-0 flex-1 flex-col bg-[#f4f5f8]'>
-			<div className='flex items-center justify-center gap-2 border-b border-slate-200 bg-white px-4 py-2 text-xs text-slate-500'>
-				<span className='rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-700'>
+		<section className='flex min-h-0 min-w-0 flex-1 flex-col bg-[#101117] text-slate-200'>
+			<div className='flex items-center justify-center gap-2 border-b border-slate-700 bg-[#171821] px-4 py-2 text-xs text-slate-400'>
+				<span className='rounded-md border border-slate-600 px-2 py-1 font-medium text-slate-200'>
 					16:9
 				</span>
 				<span>原 PPT 页面与动画预览</span>
 			</div>
-			<div className='flex flex-1 items-center justify-center overflow-hidden p-8'>
+			<div
+				ref={viewportRef}
+				className='flex min-h-0 flex-1 items-center justify-center overflow-hidden p-5'
+			>
 				<div
 					ref={stageRef}
-					className='overflow-hidden rounded-lg bg-white shadow-[0_18px_60px_rgba(15,23,42,0.18)] ring-1 ring-slate-200'
+					className='relative overflow-hidden rounded-md bg-white shadow-[0_22px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/10'
 					style={{ width: 160 * previewScale, height: thumbHeight * previewScale }}
 				>
 					<div
@@ -65,13 +87,20 @@ export function StoryboardPreview({
 							canvasSize={canvasSize}
 						/>
 					</div>
+					{subtitleText?.trim() && (
+						<div className='pointer-events-none absolute inset-x-[6%] bottom-[4%] flex justify-center'>
+							<p className='line-clamp-2 rounded-md bg-black/75 px-3 py-1.5 text-center text-[clamp(12px,1.3vw,22px)] font-medium leading-relaxed text-white shadow-lg [text-shadow:0_1px_2px_rgba(0,0,0,0.9)]'>
+								{subtitleText.trim()}
+							</p>
+						</div>
+					)}
 				</div>
 			</div>
-			<div className='flex items-center justify-center gap-3 border-t border-slate-200 bg-white px-4 py-3'>
+			<div className='flex items-center justify-center gap-3 border-t border-slate-700 bg-[#171821] px-4 py-2.5'>
 				<button
 					type='button'
 					onClick={onRestart}
-					className='rounded-full p-2 text-slate-500 hover:bg-slate-100'
+					className='rounded-full p-2 text-slate-400 hover:bg-white/10'
 					title='重新播放当前分镜'
 				>
 					<LuRotateCcw className='h-4 w-4' />
@@ -79,7 +108,7 @@ export function StoryboardPreview({
 				<button
 					type='button'
 					onClick={onTogglePlay}
-					className='flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white hover:bg-slate-700'
+					className='flex h-9 w-9 items-center justify-center rounded-full bg-pink-500 text-white hover:bg-pink-400'
 					title={isPlaying ? '暂停' : '播放'}
 				>
 					{isPlaying ? (
@@ -88,15 +117,15 @@ export function StoryboardPreview({
 						<LuPlay className='h-4 w-4 translate-x-px' />
 					)}
 				</button>
-				<div className='h-1.5 w-56 overflow-hidden rounded-full bg-slate-200'>
+				<div className='h-1.5 w-56 overflow-hidden rounded-full bg-slate-700'>
 					{ratio === undefined ? (
 						<div
-							className={`h-full bg-orange-500 ${
+							className={`h-full bg-pink-500 ${
 								isPlaying ? 'w-2/3 transition-all duration-[1800ms]' : 'w-1/3'
 							}`}
 						/>
 					) : (
-						<div className='h-full bg-orange-500' style={{ width: `${ratio * 100}%` }} />
+						<div className='h-full bg-pink-500' style={{ width: `${ratio * 100}%` }} />
 					)}
 				</div>
 			</div>

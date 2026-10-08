@@ -50,7 +50,7 @@ describe('renderOleElement', () => {
 		expect(renderOleElement(el, 0, makeContext())).toBeNull();
 	});
 
-	it('renders the preview image with a type badge overlay', () => {
+	it('renders the preview image without an application badge overlay', () => {
 		const node = renderOleElement(
 			oleElement({
 				oleObjectType: 'excel',
@@ -71,8 +71,7 @@ describe('renderOleElement', () => {
 		expect(img?.getAttribute('src')).toBe(PNG_DATA_URL);
 
 		const badge = node.querySelector('svg.pptxv-ole-badge');
-		expect(badge?.textContent).toBe('EXCEL');
-		expect(badge?.querySelector('rect')?.getAttribute('fill')).toBe('#217346');
+		expect(badge).toBeNull();
 		expect(node.querySelector('.pptxv-ole-placeholder')).toBeNull();
 	});
 

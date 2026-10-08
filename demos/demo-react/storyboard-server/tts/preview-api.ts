@@ -4,10 +4,12 @@ import { join } from 'node:path';
 
 import type { Connect } from 'vite';
 
+import { AliyunStoryboardSynthesizer } from '../jobs/aliyun-synthesizer';
 import { makeToneWav } from '../jobs/fake-synthesizer';
 import { synthesizeLocalWav } from '../jobs/local-espeak-synthesizer';
 import { EdgeTtsStoryboardSynthesizer } from '../jobs/neural-tts';
 import { acceptsContentType } from '../request-security';
+import { getTtsProviderConfig } from './provider-config';
 import { TencentTtsService } from './service';
 
 async function readJson(request: import('node:http').IncomingMessage): Promise<unknown> {
@@ -33,15 +35,28 @@ function respond(
 	response.end(JSON.stringify(body));
 }
 
+function previewError(error: unknown): string {
+	const message = error instanceof Error ? error.message : String(error);
+	return message
+		.replaceAll(/Bearer\s+[^\s"']+/giu, 'Bearer [redacted]')
+		.replaceAll(/sk-[A-Za-z0-9._-]+/gu, '[redacted]')
+		.slice(0, 600);
+}
+
 function service(voiceType: number, speed: number): TencentTtsService {
-	const secretId = process.env.TENCENT_TTS_SECRET_ID?.trim() || '';
-	const secretKey = process.env.TENCENT_TTS_SECRET_KEY?.trim() || '';
+	const config = getTtsProviderConfig();
+	const secretId = config.tencentSecretId;
+	const secretKey = config.tencentSecretKey;
 	if (!secretId || !secretKey) {
 		throw new Error('TENCENT_TTS_CREDENTIALS_MISSING');
 	}
 	return new TencentTtsService({
-		credentials: { secretId, secretKey },
-		region: process.env.TENCENT_TTS_REGION?.trim() || undefined,
+		credentials: {
+			secretId,
+			secretKey,
+			securityToken: config.tencentSecurityToken || undefined,
+		},
+		region: config.tencentRegion || undefined,
 		voiceType,
 		speed,
 		sampleRate: 16000,
@@ -76,7 +91,8 @@ export function createTtsPreviewMiddleware(): Connect.NextHandleFunction {
 			if (!Number.isSafeInteger(voiceType) || !Number.isFinite(speed)) {
 				return respond(response, 400, { error: 'INVALID_VOICE' });
 			}
-			if (process.env.STORYBOARD_TTS_FAKE === '1') {
+			const provider = getTtsProviderConfig().provider;
+			if (provider === 'fake') {
 				const durationMs = Math.max(700, Math.round(([...text].length / 5) * 1000));
 				return respond(response, 200, {
 					taskId: `fake-${Date.now()}`,
@@ -87,7 +103,7 @@ export function createTtsPreviewMiddleware(): Connect.NextHandleFunction {
 					segments: [],
 				});
 			}
-			if (process.env.STORYBOARD_TTS_EDGE === '1') {
+			if (provider === 'edge') {
 				const workDir = await mkdtemp(join(tmpdir(), 'storyboard-edge-preview-'));
 				try {
 					const taskId = `edge-${Date.now()}`;
@@ -117,7 +133,37 @@ export function createTtsPreviewMiddleware(): Connect.NextHandleFunction {
 					await rm(workDir, { recursive: true, force: true });
 				}
 			}
-			if (process.env.STORYBOARD_TTS_LOCAL === '1') {
+			if (provider === 'aliyun') {
+				const workDir = await mkdtemp(join(tmpdir(), 'storyboard-aliyun-preview-'));
+				try {
+					const taskId = `aliyun-${Date.now()}`;
+					const result = await new AliyunStoryboardSynthesizer().synthesize({
+						taskId,
+						clipId: 'preview',
+						sourceShotId: 'preview',
+						startMs: 0,
+						startSample: 0,
+						text,
+						voiceType,
+						speed,
+						outputDir: workDir,
+						signal: AbortSignal.timeout(60_000),
+					});
+					const audio = await readFile(result.audioPath!);
+					return respond(response, 200, {
+						taskId,
+						provider: 'aliyun-compatible',
+						durationMs: result.durationMs,
+						mimeType: 'audio/wav',
+						audioBase64: audio.toString('base64'),
+						subtitles: result.words,
+						segments: [],
+					});
+				} finally {
+					await rm(workDir, { recursive: true, force: true });
+				}
+			}
+			if (provider === 'local') {
 				const workDir = await mkdtemp(join(tmpdir(), 'storyboard-tts-preview-'));
 				try {
 					const result = await synthesizeLocalWav(
@@ -154,11 +200,14 @@ export function createTtsPreviewMiddleware(): Connect.NextHandleFunction {
 				})),
 			});
 		} catch (error) {
-			const code =
-				error instanceof Error && error.message === 'TENCENT_TTS_CREDENTIALS_MISSING'
-					? error.message
-					: 'TTS_PREVIEW_FAILED';
-			return respond(response, code === 'TENCENT_TTS_CREDENTIALS_MISSING' ? 503 : 500, {
+			const detail = previewError(error);
+			const code = ['TENCENT_TTS_CREDENTIALS_MISSING', 'ALIYUN_TTS_API_KEY_MISSING'].includes(
+				detail,
+			)
+				? detail
+				: detail || 'TTS_PREVIEW_FAILED';
+			console.error('[storyboard-tts-preview] failed', { error: detail });
+			return respond(response, code.endsWith('_MISSING') ? 503 : 500, {
 				error: code,
 			});
 		}

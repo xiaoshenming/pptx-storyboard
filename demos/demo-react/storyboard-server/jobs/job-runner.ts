@@ -33,12 +33,27 @@ export function cancelRunningStoryboardJob(jobId: string): boolean {
 	return Boolean(controller);
 }
 
-function ttsConcurrency(): number {
+function ttsConcurrency(providerName?: string): number {
+	if (providerName === 'aliyun-compatible') {
+		const aliyunConfigured = Number(process.env.STORYBOARD_ALIYUN_TTS_CONCURRENCY || '3');
+		return Math.max(
+			1,
+			Math.min(4, Math.floor(Number.isFinite(aliyunConfigured) ? aliyunConfigured : 3)),
+		);
+	}
 	const configured = Number(process.env.STORYBOARD_TTS_CONCURRENCY || '0');
 	if (Number.isFinite(configured) && configured > 0) {
 		return Math.floor(configured);
 	}
 	return Math.max(2, Math.min(6, Math.floor(cpus().length / 3)));
+}
+
+function errorSummary(error: unknown): string {
+	const raw = error instanceof Error ? error.message : String(error);
+	return raw
+		.replaceAll(/Bearer\s+[^\s"']+/giu, 'Bearer [redacted]')
+		.replaceAll(/sk-[A-Za-z0-9._-]+/gu, '[redacted]')
+		.slice(0, 600);
 }
 
 function createTtsTask(
@@ -74,7 +89,8 @@ export async function runStoryboardJob(
 	const controller = new AbortController();
 	runningControllers.set(job.id, controller);
 	const startedAt = Date.now();
-	const synthesisConcurrency = ttsConcurrency();
+	const synthesisConcurrency = ttsConcurrency(synthesizer.providerName);
+	let ttsElapsedMs = 0;
 	try {
 		setStoryboardJobStage(job, 'synthesizing');
 		updateStoryboardJob(job, { progress: 5 });
@@ -125,11 +141,12 @@ export async function runStoryboardJob(
 					return result;
 				} catch (error) {
 					currentTask.status = controller.signal.aborted ? 'cancelled' : 'failed';
-					currentTask.error = 'TTS_FAILED';
+					currentTask.error = controller.signal.aborted ? 'TTS_CANCELLED' : errorSummary(error);
 					throw error;
 				}
 			},
 		);
+		ttsElapsedMs = Date.now() - startedAt;
 		assertActive(job, controller);
 		setStoryboardJobStage(job, 'rendering');
 		updateStoryboardJob(job, { progress: 48 });
@@ -152,6 +169,7 @@ export async function runStoryboardJob(
 				ttsConcurrency: synthesisConcurrency,
 				ttsProvider: synthesizer.providerName ?? 'unknown',
 				elapsedMs: Date.now() - startedAt,
+				ttsElapsedMs,
 				outputDurationMs: result.outputDurationMs,
 				verifiedDurationMs: receipt.durationMs,
 				outputBytes: receipt.bytes,
@@ -175,9 +193,15 @@ export async function runStoryboardJob(
 			stage: job.stage,
 			error,
 		});
+		const failedTask = job.tasks.find(
+			(task) => task.status === 'failed' && task.error && task.error !== 'TASK_INTERRUPTED',
+		);
 		updateStoryboardJob(job, {
 			stage: 'failed',
-			error: job.stage === 'synthesizing' ? 'TTS_FAILED' : 'VIDEO_RENDER_FAILED',
+			error:
+				job.stage === 'synthesizing'
+					? failedTask?.error || errorSummary(error) || 'TTS_FAILED'
+					: errorSummary(error) || 'VIDEO_RENDER_FAILED',
 		});
 	} finally {
 		runningControllers.delete(job.id);

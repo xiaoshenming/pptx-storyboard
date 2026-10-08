@@ -2,6 +2,7 @@ import type { PptxElement } from 'pptx-viewer-core';
 import { describe, expect, it } from 'vitest';
 
 import { buildTextBlockStyle } from './text-block-style';
+import { buildParagraphs } from './text-paragraphs';
 
 /** A text element with the given text style (and optional segments). */
 function textEl(
@@ -59,6 +60,47 @@ describe('buildTextBlockStyle', () => {
 		expect(style.fontWeight).toBe(400);
 		expect(style.fontStyle).toBe('normal');
 		expect(style.textDecorationLine).toBe('none');
+	});
+
+	it('uses the east-Asian face for CJK text when latin is a placeholder', () => {
+		const style = buildTextBlockStyle(
+			textEl({ fontFamily: 'Script', eastAsiaFont: '楷体' }, { text: '顶上红冠戴，身披五彩衣。' }),
+		);
+		expect(style.fontFamily).toContain('楷体');
+		expect(style.fontFamily).not.toBe('"Script", sans-serif');
+	});
+
+	it('preserves the authored font and leading inset for shape autofit text boxes', () => {
+		// Real source deck: slide 2 is 164.53 pt wide with 26 pt text, and
+		// slides 6-8 include 193.04 pt single-line boxes with 20 pt text.
+		// PowerPoint sizes these boxes to the advance plus their leading inset;
+		// applying the trailing inset as well makes Chromium wrap early.
+		for (const [width, fontSize, text] of [
+			[2089536 / 9525, 26 * (96 / 72), '顶上红冠戴，'],
+			[2451554 / 9525, 20 * (96 / 72), '假设这22只都是鸡，'],
+		] as const) {
+			const element = textEl(
+				{ fontSize, autoFit: true, autoFitMode: 'shrink', bodyInsetLeft: 9.6, bodyInsetRight: 9.6 },
+				{ width, text, textSegments: [{ text, style: { fontSize } }] },
+			);
+			const style = buildTextBlockStyle(element);
+			expect(style.paddingLeft).toBe(9.6);
+			expect(style.paddingRight).toBe(0);
+			expect(style.fontSize).toBe(fontSize);
+			expect(
+				Number.parseFloat(buildParagraphs(element)[0].runs[0].style.fontSize as string),
+			).toBeCloseTo(fontSize, 3);
+		}
+	});
+
+	it('keeps both insets for fixed text and the RTL leading inset for shape autofit', () => {
+		const insets = { bodyInsetLeft: 9.6, bodyInsetRight: 9.6 };
+		const fixed = buildTextBlockStyle(textEl(insets));
+		expect(fixed.paddingLeft).toBe(9.6);
+		expect(fixed.paddingRight).toBe(9.6);
+		const rtl = buildTextBlockStyle(textEl({ ...insets, rtl: true, autoFitMode: 'shrink' }));
+		expect(rtl.paddingLeft).toBe(0);
+		expect(rtl.paddingRight).toBe(9.6);
 	});
 
 	// Defect A: `a:normAutofit/@fontScale` was applied by React alone.

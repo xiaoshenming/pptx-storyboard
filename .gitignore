@@ -135,3 +135,14 @@ docs/public/_video-tmp/
 
 # Scratch output of the OpenXML parity audit (agent findings, not shipped)
 /.parity-audit/
+deploy/simple/.env
+
+# Local service credentials and deployment/runtime state
+.env.*
+!.env.example
+*.env.local
+service-config.json
+tts-config.json
+.runtime/
+.media-runtime/
+deploy/simple/data/

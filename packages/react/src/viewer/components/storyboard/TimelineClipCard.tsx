@@ -157,7 +157,7 @@ export function TimelineClipCard({
 			onPointerEnter={() => onHoverChange?.(clip.id)}
 			onPointerLeave={() => onHoverChange?.(undefined)}
 			className={cn(
-				'absolute top-1 flex h-10 flex-col justify-center overflow-hidden rounded border border-white/20 px-2 text-left text-[10px] shadow-sm',
+				'absolute top-1 flex h-10 touch-none select-none flex-col justify-center overflow-hidden rounded border border-white/20 px-2 text-left text-[10px] shadow-sm',
 				KIND_COLOR[trackKind],
 				trackKind === 'animation' && 'gap-0.5',
 				trackLocked && 'cursor-default opacity-80',

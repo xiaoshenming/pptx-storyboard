@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 // The openable-file allow list comes from the binding's public surface, not a
 // local regex: a hand-rolled `.pptx|.ppt|.json` refused a `.pptm` on drop that
 // the viewer's own File > Open accepted.
-import { PPTX_OPEN_ACCEPT, isSupportedPresentationFile } from '../../packages/react/src/index';
+import { PPTX_OPEN_ACCEPT } from '../../packages/react/src/index';
 import {
 	themeToCssVars,
 	vermilionDarkTheme,
@@ -22,18 +22,16 @@ import {
 	loadAudienceContent,
 	parseAudienceNonce,
 	rememberSessionDeck,
-	restoreSessionDeck,
 	storeAudienceContent,
 } from '../../packages/react/src/viewer';
-import type { CollaborationConfig } from '../../packages/react/src/viewer';
-import { markAutosaveSnapshotConsumed } from '../../packages/shared/src/render/autosave-recovery';
-import {
-	getAutosaveSnapshot,
-	listAutosaveSnapshots,
-	deleteAutosaveSnapshot,
-} from '../../packages/shared/src/render/autosave-store';
+import type { CollaborationConfig, PowerPointViewerHandle } from '../../packages/react/src/viewer';
+import type { LocalProject } from '../../packages/shared/src/render/project-library';
 import { useDemoAiConfig } from './ai-config';
 import i18nInstance from './i18n'; // Initialises i18next before any component renders
+import { PresentationDropzone } from './PresentationDropzone';
+import { ProjectLibrary, useProjectLibrary } from './project-library';
+import type { ProjectGenerationProgress, QuickVideoSettings } from './project-library';
+import { TtsProviderSettings } from './TtsProviderSettings';
 
 import './app.css';
 
@@ -295,8 +293,6 @@ function useRootTheme(theme: ViewerTheme) {
 
 // ── App ────────────────────────────────────────────────────────────────────
 
-const RECOVERY_STORAGE_KEY = 'pptx-demo-last-file';
-
 /**
  * Drop `?sample=1` from the address bar.
  *
@@ -317,23 +313,32 @@ function dropSampleParam(): void {
 function App() {
 	const [content, setContent] = useState<Uint8Array | null>(null);
 	const [fileName, setFileName] = useState<string>('');
-	// Whether the "does this tab have a deck to reopen?" check has finished. The
-	// `?sample=1` auto-load waits for it so a restored deck wins over the sample.
-	// Collaboration / broadcast / audience tabs never restore (see the effect
-	// below), so seed this true for them at mount instead of a redundant
-	// synchronous setState right after render; `room`/`broadcast` are read raw
-	// here (not from the `urlRoom`/`urlBroadcast` state below, which isn't
-	// declared yet at this point in the component).
-	// eslint-disable-next-line react/hook-use-state
-	const [restoreChecked, setRestoreChecked] = useState(() => {
-		const params = new URLSearchParams(window.location.search);
-		return Boolean(params.get('room') || params.get('broadcast')) || isAudienceTab();
-	});
-	const [recoveryOffer, setRecoveryOffer] = useState<{
-		filePath: string;
-		timestamp: number;
-		size: number;
+	const viewerRef = useRef<PowerPointViewerHandle>(null);
+	const libraryEnabled =
+		!isAudienceTab() &&
+		!new URLSearchParams(window.location.search).has('room') &&
+		!new URLSearchParams(window.location.search).has('broadcast');
+	const library = useProjectLibrary(libraryEnabled);
+	const [quickGeneration, setQuickGeneration] = useState<{
+		project: LocalProject;
+		data: Uint8Array;
+		settings: QuickVideoSettings;
 	} | null>(null);
+	const [projectProgress, setProjectProgress] = useState<
+		Record<string, ProjectGenerationProgress | undefined>
+	>({});
+	const advanceProjectProgress = useCallback(
+		(projectId: string, next: ProjectGenerationProgress) =>
+			setProjectProgress((current) => ({
+				...current,
+				[projectId]: {
+					...next,
+					progress: Math.max(current[projectId]?.progress ?? 0, next.progress),
+				},
+			})),
+		[],
+	);
+	const restoreChecked = library.ready;
 	const themeKey = useMemo<string>(() => {
 		try {
 			return localStorage.getItem('pptx-demo-theme') ?? 'vermilionDark';
@@ -417,7 +422,7 @@ function App() {
 	// `?sample=1` auto-loads the bundled sample deck (used by the docs landing
 	// page to embed a live, pre-populated viewer).
 	// eslint-disable-next-line react/hook-use-state
-	const [urlSample] = useState(
+	const [urlSample, setUrlSample] = useState(
 		() => new URLSearchParams(window.location.search).get('sample') === '1',
 	);
 
@@ -721,116 +726,82 @@ function App() {
 		};
 	}, []);
 
-	// ── Refresh survival ────────────────────────────────────────────────────
-	// Remember the open deck for THIS tab, and reopen it on the next load. A
-	// refresh used to drop the presentation and land the user back on the file
-	// picker; now it comes back, with any autosaved edits (restoreSessionDeck
-	// prefers the newer of the two). An audience tab is fed by the presenter
-	// window, so it neither remembers nor restores.
+	// Session bytes remain a fallback for older hosts; the library owns navigation.
 	useEffect(() => {
 		if (!content || isAudienceTab()) {
 			return;
 		}
-		void rememberSessionDeck(fileName, content);
-	}, [content, fileName]);
+		void rememberSessionDeck(library.active?.autosaveKey ?? fileName, content);
+	}, [content, fileName, library.active?.autosaveKey]);
 
-	useEffect(() => {
-		// Collaboration / broadcast / audience tabs are fed by the session; they
-		// never restore, and must not hold the sample fetch up either. Already
-		// reflected in `restoreChecked`'s initial value above (joinRoomId can only
-		// ever go truthy -> falsy, never the other way, so this can't be the
-		// first time that's observed true) — just skip the restore attempt.
-		if (joinRoomId || isAudienceTab()) {
-			return;
-		}
-		let cancelled = false;
-		void restoreSessionDeck().then((deck) => {
-			if (cancelled) {
-				return undefined;
+	const returnToProjects = () =>
+		void library.run(async () => {
+			if (!viewerRef.current) {
+				throw new Error('编辑器尚未就绪，请稍后重试。');
 			}
-			if (deck) {
-				// This tab has moved on from the bundled sample (the user opened a
-				// deck of their own, possibly through the viewer's own File > Open),
-				// so a leftover `?sample=1` must not re-seed it on the next refresh.
-				dropSampleParam();
-				setContent(deck.data);
-				setFileName(deck.fileName);
-			}
-			setRestoreChecked(true);
-			return undefined;
+			const bytes = await viewerRef.current.getContent();
+			await library.save(fileName, bytes);
+			setUrlSample(false);
+			dropSampleParam();
+			setContent(null);
+			library.setActive(null);
+			document.title = '我的项目 - PPTX Viewer';
 		});
-		return () => {
-			cancelled = true;
-		};
-	}, [joinRoomId]);
 
-	// ── Recovery detection on mount ─────────────────────────────────────────
-	// Check IndexedDB for autosave snapshots. If we find one for the last opened
-	// file (persisted in localStorage), offer to restore it.
-	useEffect(() => {
-		if (content) {
-			return;
-		}
-		void (async () => {
+	const openProject = (id: string) =>
+		void library.run(async () => {
+			const { metadata, data } = await library.open(id);
+			setUrlSample(false);
+			dropSampleParam();
+			setFileName(metadata.name);
+			setContent(data);
+		});
+
+	const generateProjectVideo = (project: LocalProject, settings: QuickVideoSettings) =>
+		void library.run(async () => {
 			try {
-				const lastFile = localStorage.getItem(RECOVERY_STORAGE_KEY);
-				if (lastFile) {
-					const snapshot = await getAutosaveSnapshot(lastFile);
-					if (snapshot && Date.now() - snapshot.timestamp < 24 * 60 * 60 * 1000) {
-						setRecoveryOffer({
-							filePath: snapshot.key,
-							timestamp: snapshot.timestamp,
-							size: snapshot.size,
-						});
-						return;
-					}
+				setProjectProgress((current) => ({
+					...current,
+					[project.id]: { stage: 'configuring', progress: 1, status: '正在应用生成设置' },
+				}));
+				const ttsResponse = await fetch('/api/storyboard/tts/config', {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ provider: settings.ttsProvider }),
+				});
+				if (!ttsResponse.ok) {
+					const result = (await ttsResponse.json().catch(() => ({}))) as { error?: string };
+					throw new Error(result.error || `语音服务配置失败（HTTP ${ttsResponse.status}）`);
 				}
-				// No specific file match; check if any snapshots exist
-				const all = await listAutosaveSnapshots();
-				const recent = all.find((s) => Date.now() - s.timestamp < 24 * 60 * 60 * 1000);
-				if (recent) {
-					setRecoveryOffer({
-						filePath: recent.key,
-						timestamp: recent.timestamp,
-						size: recent.size,
-					});
-				}
-			} catch {
-				// Silently ignore recovery check errors
+				advanceProjectProgress(project.id, {
+					stage: 'loading',
+					progress: 1,
+					status: '正在读取项目文件',
+				});
+				const loaded = await library.load(project.id);
+				setQuickGeneration({ project: loaded.metadata, data: loaded.data, settings });
+				advanceProjectProgress(project.id, {
+					stage: 'parsing',
+					progress: 2,
+					status: '正在解析演示文稿',
+				});
+			} catch (error) {
+				advanceProjectProgress(project.id, {
+					stage: 'failed',
+					progress: 0,
+					status: error instanceof Error ? error.message : '生成设置应用失败',
+					terminal: true,
+				});
+				throw error;
 			}
-		})();
-	}, [content]);
+		});
 
-	const handleRecoveryRestore = useCallback(async () => {
-		if (!recoveryOffer) {
+	const deleteProject = (project: LocalProject) => {
+		if (!window.confirm(`确定删除“${project.name}”吗？删除后无法恢复。`)) {
 			return;
 		}
-		try {
-			const snapshot = await getAutosaveSnapshot(recoveryOffer.filePath);
-			if (snapshot) {
-				// The host is taking delivery of this snapshot, so the viewer must not
-				// then offer to "recover" the bytes it is about to be handed.
-				markAutosaveSnapshotConsumed(snapshot.timestamp);
-				setContent(snapshot.data);
-				setFileName(snapshot.key);
-				try {
-					localStorage.setItem(RECOVERY_STORAGE_KEY, snapshot.key);
-				} catch {
-					/* ignore */
-				}
-			}
-		} catch {
-			// Silently ignore
-		}
-		setRecoveryOffer(null);
-	}, [recoveryOffer]);
-
-	const handleRecoveryDismiss = useCallback(() => {
-		if (recoveryOffer) {
-			void deleteAutosaveSnapshot(recoveryOffer.filePath);
-		}
-		setRecoveryOffer(null);
-	}, [recoveryOffer]);
+		void library.run(() => library.remove(project));
+	};
 
 	// Update document title when in collaboration/broadcast mode
 	useEffect(() => {
@@ -857,52 +828,33 @@ function App() {
 		void i18nInstance.changeLanguage(languageKey);
 	}, [languageKey]);
 
-	const handleFile = useCallback((file: File) => {
-		dropSampleParam();
-		setFileName(file.name);
-		try {
-			localStorage.setItem(RECOVERY_STORAGE_KEY, file.name);
-		} catch {
-			/* ignore */
-		}
-		const reader = new FileReader();
-		reader.onload = () => {
-			const bytes = new Uint8Array(reader.result as ArrayBuffer);
-			setContent(bytes);
-		};
-		reader.readAsArrayBuffer(file);
-	}, []);
-
-	const handleNewPresentation = useCallback(async () => {
-		dropSampleParam();
-		const { handler, data } = await PptxHandler.createBlank({
-			title: '未命名演示文稿',
-			initialSlideCount: 1,
-		});
-		const bytes = await handler.save(data.slides);
-		setContent(bytes);
-		setFileName('未命名演示文稿');
-		try {
-			localStorage.setItem(RECOVERY_STORAGE_KEY, '未命名演示文稿');
-		} catch {
-			/* ignore */
-		}
-	}, []);
-
-	const handleDrop = useCallback(
-		(e: React.DragEvent) => {
-			e.preventDefault();
-			const file = e.dataTransfer.files[0];
-			if (file && isSupportedPresentationFile(file.name)) {
-				handleFile(file);
-			}
-		},
-		[handleFile],
+	const { run: runLibrary, create: createLibrary } = library;
+	const handleFile = useCallback(
+		(file: File) =>
+			void runLibrary(async () => {
+				setUrlSample(false);
+				dropSampleParam();
+				const bytes = new Uint8Array(await file.arrayBuffer());
+				await createLibrary(file.name, bytes);
+				setFileName(file.name);
+				setContent(bytes);
+			}),
+		[runLibrary, createLibrary],
 	);
 
-	const handleDragOver = useCallback((e: React.DragEvent) => {
-		e.preventDefault();
-	}, []);
+	const handleNewPresentation = () =>
+		library.run(async () => {
+			setUrlSample(false);
+			dropSampleParam();
+			const { handler, data } = await PptxHandler.createBlank({
+				title: '未命名演示文稿',
+				initialSlideCount: 1,
+			});
+			const bytes = await handler.save(data.slides);
+			await library.create('未命名演示文稿.pptx', bytes);
+			setContent(bytes);
+			setFileName('未命名演示文稿.pptx');
+		});
 
 	const handleInputChange = useCallback(
 		(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -940,81 +892,79 @@ function App() {
 
 	if (content) {
 		return (
-			<main className='h-[100dvh] w-screen'>
-				{/* `autosaveIntervalMs`: a demo wants snappy crash recovery, and an
+			<main className='h-[100dvh] w-screen flex flex-col'>
+				{libraryEnabled && (
+					<div className='flex shrink-0 items-center gap-4 border-b border-border bg-background text-foreground px-4 py-2 text-sm'>
+						<button
+							type='button'
+							disabled={library.busy}
+							onClick={returnToProjects}
+							className='rounded-md border border-border px-3 py-1 hover:bg-accent disabled:opacity-50'
+						>
+							{library.busy ? '正在保存…' : '← 返回项目列表'}
+						</button>
+						<span className='truncate'>{fileName}</span>
+						{library.error && (
+							<span role='alert' className='text-red-500'>
+								{library.error}
+							</span>
+						)}
+					</div>
+				)}
+				<div className='min-h-0 flex-1'>
+					{/* `autosaveIntervalMs`: a demo wants snappy crash recovery, and an
 				    explicit interval is a host policy that outranks the File > Options
 				    AutoRecover cadence the viewer otherwise follows (2 minutes). */}
-				<PowerPointViewer
-					content={content}
-					fileName={fileName}
-					filePath={fileName}
-					canEdit
-					autosaveIntervalMs={2000}
-					smartArt3D={smartArt3D}
-					surfaceChart3D={surfaceChart3D}
-					barChart3D={barChart3D}
-					lineChart3D={lineChart3D}
-					areaChart3D={areaChart3D}
-					pieChart3D={pieChart3D}
-					authorName={collaborationConfig?.userName ?? autoName}
-					collaboration={collaborationConfig ?? undefined}
-					onStartCollaboration={handleStartCollaboration}
-					onStopCollaboration={handleStopCollaboration}
-					shareDefaults={{
-						roomId: autoRoomId,
-						userName: autoName,
-						serverUrl: defaultServerUrl,
-					}}
-					ai={aiConfig}
-					storyboardScriptEndpoint='/api/storyboard/generate'
-					storyboardTtsEndpoint='/api/storyboard/tts'
-					storyboardJobEndpoint='/api/storyboard/jobs'
-					onDirtyChange={(dirty) => {
-						document.title = dirty ? `* ${fileName} - PPTX Viewer` : `${fileName} - PPTX Viewer`;
-					}}
-				/>
+					<PowerPointViewer
+						ref={viewerRef}
+						key={library.active?.id ?? fileName}
+						content={content}
+						fileName={fileName}
+						filePath={library.active?.autosaveKey ?? fileName}
+						canEdit
+						autosaveIntervalMs={2000}
+						smartArt3D={smartArt3D}
+						surfaceChart3D={surfaceChart3D}
+						barChart3D={barChart3D}
+						lineChart3D={lineChart3D}
+						areaChart3D={areaChart3D}
+						pieChart3D={pieChart3D}
+						authorName={collaborationConfig?.userName ?? autoName}
+						collaboration={collaborationConfig ?? undefined}
+						onStartCollaboration={handleStartCollaboration}
+						onStopCollaboration={handleStopCollaboration}
+						shareDefaults={{
+							roomId: autoRoomId,
+							userName: autoName,
+							serverUrl: defaultServerUrl,
+						}}
+						ai={aiConfig}
+						storyboardScriptEndpoint='/api/storyboard/generate'
+						storyboardTtsEndpoint='/api/storyboard/tts'
+						storyboardJobEndpoint='/api/storyboard/jobs'
+						storyboardProjectKey={library.active?.storyboardKey}
+						onOpenFile={libraryEnabled ? returnToProjects : undefined}
+						onDirtyChange={(dirty) => {
+							document.title = dirty ? `* ${fileName} - PPTX Viewer` : `${fileName} - PPTX Viewer`;
+						}}
+					/>
+				</div>
 			</main>
 		);
 	}
 
 	return (
-		<main className='flex flex-col items-center justify-center h-[100dvh] w-screen bg-background text-foreground'>
-			<h1 className='sr-only'>PPTX Viewer</h1>
-			{recoveryOffer && (
-				<div className='max-w-[900px] w-full mb-4 p-4 rounded-lg border border-primary/40 bg-primary/5 flex items-center justify-between gap-4'>
-					<div>
-						<p className='text-foreground font-medium text-sm'>Unsaved changes recovered</p>
-						<p className='text-muted-foreground text-xs mt-0.5'>
-							{recoveryOffer.filePath} - saved {new Date(recoveryOffer.timestamp).toLocaleString()}{' '}
-							({(recoveryOffer.size / 1024).toFixed(0)} KB)
-						</p>
-					</div>
-					<div className='flex gap-2 shrink-0'>
-						<button
-							onClick={() => void handleRecoveryRestore()}
-							className='px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors'
-						>
-							Restore
-						</button>
-						<button
-							onClick={handleRecoveryDismiss}
-							className='px-3 py-1.5 rounded-md border border-border text-muted-foreground text-sm hover:bg-accent transition-colors'
-						>
-							Dismiss
-						</button>
-					</div>
-				</div>
+		<main className='flex flex-col items-center min-h-[100dvh] w-screen bg-background text-foreground px-6 py-10'>
+			{library.error && (
+				<p role='alert' className='mb-4 text-red-500 max-w-[900px] w-full'>
+					{library.error}
+				</p>
 			)}
-			{/* Drag and drop supplements the keyboard-accessible native file input. */}
-			{/* oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
-			<div
-				className='max-w-[900px] w-full border-2 border-dashed border-border rounded-xl p-12 text-center cursor-pointer transition-colors hover:border-primary hover:bg-accent'
-				role='group'
-				data-testid='dropzone'
-				aria-label={t('demo.dropzone.uploadAriaLabel')}
+			<PresentationDropzone
+				label={t('demo.dropzone.uploadAriaLabel')}
+				disabled={library.busy || !library.ready}
 				onClick={handleZoneClick}
-				onDrop={handleDrop}
-				onDragOver={handleDragOver}
+				onFile={handleFile}
 			>
 				{urlBroadcast ? (
 					<>
@@ -1048,6 +998,7 @@ function App() {
 					<button
 						type='button'
 						data-testid='browse-files'
+						disabled={library.busy || !library.ready}
 						onClick={(e) => {
 							e.stopPropagation();
 							openFilePicker();
@@ -1058,6 +1009,7 @@ function App() {
 					</button>
 					<button
 						type='button'
+						disabled={library.busy || !library.ready}
 						onClick={(e) => {
 							e.stopPropagation();
 							void handleNewPresentation();
@@ -1070,13 +1022,59 @@ function App() {
 				<input
 					type='file'
 					id='file-input'
+					disabled={library.busy || !library.ready}
 					accept={PPTX_OPEN_ACCEPT}
 					aria-label={t('demo.dropzone.uploadAriaLabel')}
 					className='sr-only'
 					ref={fileInputRef}
 					onChange={handleInputChange}
 				/>
-			</div>
+			</PresentationDropzone>
+			{libraryEnabled && <TtsProviderSettings />}
+			{libraryEnabled && (
+				<ProjectLibrary
+					projects={library.projects}
+					ready={library.ready}
+					busy={library.busy || Boolean(quickGeneration)}
+					onOpen={openProject}
+					onGenerate={generateProjectVideo}
+					onDelete={deleteProject}
+					progressByProject={projectProgress}
+					loadPreview={library.load}
+				/>
+			)}
+			{quickGeneration && (
+				<div
+					className='fixed -left-[12000px] top-0 h-[720px] w-[1280px] overflow-hidden [transform:translateZ(0)]'
+					aria-hidden='true'
+				>
+					<PowerPointViewer
+						key={`quick-video-${quickGeneration.project.id}`}
+						content={quickGeneration.data}
+						fileName={quickGeneration.project.name}
+						filePath={quickGeneration.project.autosaveKey}
+						storyboardScriptEndpoint='/api/storyboard/generate'
+						storyboardTtsEndpoint='/api/storyboard/tts'
+						storyboardJobEndpoint='/api/storyboard/jobs'
+						storyboardProjectKey={quickGeneration.project.storyboardKey}
+						storyboardAutoGenerate
+						storyboardAutoGenerateOptions={{
+							polish: quickGeneration.settings.polish,
+							subtitlesEnabled: quickGeneration.settings.subtitlesEnabled,
+							audience: quickGeneration.settings.audience,
+							detail: quickGeneration.settings.detail,
+							supplement: quickGeneration.settings.supplement,
+						}}
+						onStoryboardGenerationProgress={(progress) => {
+							const projectId = quickGeneration.project.id;
+							advanceProjectProgress(projectId, progress);
+							if (progress.terminal) {
+								setQuickGeneration(null);
+							}
+						}}
+					/>
+				</div>
+			)}
 		</main>
 	);
 }

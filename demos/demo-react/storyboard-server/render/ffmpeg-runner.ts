@@ -86,9 +86,8 @@ async function probeVideoEncoder(width: number, height: number): Promise<'h264_n
 		if (!stdout.includes('h264_nvenc')) {
 			return 'libx264';
 		}
-		await runCommand('nvidia-smi', ['--query-gpu=name', '--format=csv,noheader'], {
-			timeoutMs: 5000,
-		});
+		// The encode probe below is authoritative. `nvidia-smi` can fail when
+		// FFmpeg can still use NVENC, especially under a restricted child env.
 		await runCommand(
 			'ffmpeg',
 			[

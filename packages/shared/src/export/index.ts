@@ -42,6 +42,7 @@ export * from './svg-print';
 // stays in each binding; only the cloned-document mutation passes are shared.
 export * from './css-preprocessing';
 export * from './canvas-color-fix';
+export * from './capture-scope';
 // Pure PDF byte assembly: slides-only (`buildSlidesPdfBytes`) and notes-page
 // (`buildNotesPdfBytes`) builders plus the segment-merge helper. The binding
 // converts canvases to JPEG bytes and wraps the result in a Blob/object-URL.

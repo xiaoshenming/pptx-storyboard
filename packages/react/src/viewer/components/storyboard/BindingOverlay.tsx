@@ -4,6 +4,7 @@ import { cn } from '../../utils';
 import { clipMetadataString } from './narration-binding-actions';
 import { clampPlayhead, millisecondsToPixels, pixelsToMilliseconds } from './timeline';
 import type { TimelineClip, TimelineModel } from './timeline';
+import { timelineRulerTicks } from './timeline-ruler-ticks';
 
 /** Ruler strip height in px (h-6). */
 export const TIMELINE_RULER_HEIGHT_PX = 24;
@@ -52,7 +53,7 @@ export function TimelineRuler({
 	onSeek?: (timeMs: number) => void;
 }): React.ReactElement {
 	const [seeking, setSeeking] = useState(false);
-	const ticks = Array.from({ length: Math.ceil(timeline.durationMs / 1000) + 2 }, (_, i) => i);
+	const ticks = timelineRulerTicks(timeline.durationMs);
 	const seekToClientX = (clientX: number, element: HTMLDivElement) => {
 		const rect = element.getBoundingClientRect();
 		const ms = pixelsToMilliseconds(clientX - rect.left, pixelsPerSecond);

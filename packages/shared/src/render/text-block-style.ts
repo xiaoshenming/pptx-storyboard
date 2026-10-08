@@ -39,6 +39,7 @@ import {
 import { resolveTextBodyRectPadding } from './text-body-rect';
 import { lineHeightToPx, resolveLineHeight } from './text-line-height';
 import { resolveCssTextAlign } from './text-paragraph-style';
+import { prefersEastAsiaFont } from './text-script-fonts';
 import {
 	computeAutoFitTextStyle,
 	toCssTextOrientation,
@@ -109,7 +110,7 @@ function hasItalicRuns(element: PptxElement & { textSegments?: TextSegment[] }):
  * Covers colour (including the hyperlink override), alignment and direction,
  * the font declaration, decorations, line height, body insets, the
  * element-level margin/indent fallback, vertical writing modes,
- * `wrap="none"`, and the `a:normAutofit` / `spAutoFit` font scale.
+ * `wrap="none"`, `a:normAutofit` font scaling, and `spAutoFit` wrap width.
  *
  * Returns just `{ color }` for an element with no text properties, so a caller
  * can spread the result unconditionally.
@@ -203,8 +204,14 @@ export function buildTextBlockStyle(
 	// and the body is what plain (unsegmented) text inherits.
 	// The authored PANOSE picks the right generic (a serif font with no entry in
 	// the substitution map must not fall back to sans, and vice versa).
-	style.fontFamily = ts?.fontFamily
-		? getSubstituteFontFamily(ts.fontFamily, parsePanoseString(ts.latinFontPanose))
+	const authoredFont = prefersEastAsiaFont(element.text)
+		? ts?.eastAsiaFont || ts?.fontFamily
+		: ts?.fontFamily || ts?.eastAsiaFont;
+	const authoredPanose = prefersEastAsiaFont(element.text)
+		? ts?.eastAsiaFontPanose || ts?.latinFontPanose
+		: ts?.latinFontPanose || ts?.eastAsiaFontPanose;
+	style.fontFamily = authoredFont
+		? getSubstituteFontFamily(authoredFont, parsePanoseString(authoredPanose))
 		: DEFAULT_FONT_FAMILY;
 	style.fontWeight = ts?.bold ? 700 : 400;
 	style.fontStyle = ts?.italic ? 'italic' : 'normal';
@@ -221,8 +228,15 @@ export function buildTextBlockStyle(
 	// the top and bottom rows being clipped by the shape edge.
 	style.paddingTop = rect.top + bodyTop + (italic ? 1 : 0);
 	style.paddingBottom = rect.bottom + bodyBottom + (italic ? 1 : 0);
-	style.paddingLeft = rect.left + bodyLeft + bodyMarginLeft;
-	style.paddingRight = rect.right + bodyRight + bodyMarginRight;
+	// PowerPoint's spAutoFit geometry is sized to the text advance plus its
+	// leading inset. Its trailing inset is allowed to extend beyond the saved
+	// shape edge. Subtracting both insets in CSS narrows the wrap area and turns
+	// authored single-line text boxes into two lines (including this deck's
+	// slides 2-8). Preserve the leading inset and let the trailing side spill.
+	const shapeAutoFit =
+		ts?.autoFitMode === 'shrink' && (element.type === 'text' || element.locks?.txBox === true);
+	style.paddingLeft = rect.left + (shapeAutoFit && isRtl ? 0 : bodyLeft) + bodyMarginLeft;
+	style.paddingRight = rect.right + (shapeAutoFit && !isRtl ? 0 : bodyRight) + bodyMarginRight;
 	style.textIndent = bodyIndent;
 	style.overflow = 'visible';
 
@@ -260,8 +274,7 @@ export function buildTextBlockStyle(
 	}
 
 	// Auto-fit: the OOXML-provided `fontScale` / `lnSpcReduction` when present,
-	// otherwise the shrink-to-fit heuristic. Applied last so it overrides the
-	// authored font size and line height.
+	// Applied last so the authored normAutofit scale overrides the font size.
 	const autoFit = computeAutoFitTextStyle({
 		textStyle: ts,
 		text: element.text ?? '',

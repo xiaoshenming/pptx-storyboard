@@ -8,19 +8,6 @@
 				class="pptx-ng-ole-img"
 				draggable="false"
 			/>
-			<svg class="pptx-ng-ole-badge" width="24" height="24" viewBox="0 0 24 24">
-				<rect x="2" y="2" width="20" height="20" rx="3" [attr.fill]="typeColor()" />
-				<text
-					x="12"
-					y="16"
-					text-anchor="middle"
-					fill="white"
-					[attr.font-size]="badgeLabel().length > 4 ? 6 : 10"
-					font-weight="bold"
-				>
-					{{ badgeLabel() }}
-				</text>
-			</svg>
 		</div>
 	} @else {
 		<!-- Type-specific placeholder box -->

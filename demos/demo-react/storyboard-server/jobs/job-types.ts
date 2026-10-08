@@ -40,6 +40,7 @@ export interface StoryboardJob {
 		ttsConcurrency: number;
 		ttsProvider?: string;
 		elapsedMs: number;
+		ttsElapsedMs?: number;
 		outputDurationMs: number;
 		verifiedDurationMs?: number;
 		outputBytes?: number;

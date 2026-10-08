@@ -1,4 +1,4 @@
-import { symlink, writeFile } from 'node:fs/promises';
+import { copyFile, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { FrameRun } from './frame-runs';
@@ -15,7 +15,11 @@ export async function writeConcatInput(
 			throw new DOMException('Cancelled', 'AbortError');
 		}
 		const name = `frame-${String(index).padStart(8, '0')}.png`;
-		await symlink(run.framePath, join(workDir, name));
+		if (process.platform === 'win32') {
+			await copyFile(run.framePath, join(workDir, name));
+		} else {
+			await symlink(run.framePath, join(workDir, name));
+		}
 		lines.push(`file '${name}'`, `duration ${(run.frameCount / fps).toFixed(9)}`);
 	}
 	if (signal?.aborted) {

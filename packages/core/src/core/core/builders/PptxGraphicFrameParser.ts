@@ -41,27 +41,32 @@ function readPositiveInteger(value: unknown): number {
 }
 
 /**
- * A table's true size is its grid: the sum of `a:tblGrid` column widths and
- * `a:tr` row heights. Some producers (e.g. Google Slides / Slidesgo exports)
+ * Read complete grid dimensions. Zero/missing row heights are unspecified;
+ * never let a partial sum replace the authored frame height. Some producers (e.g. Google Slides / Slidesgo exports)
  * leave the graphic frame's `p:xfrm/a:ext` stale after the grid is resized,
  * which otherwise clips or shrinks the rendered table to the wrong extent.
  */
 function getTableGridExtent(
 	graphicData: XmlObject | undefined,
-): { widthEmu: number; heightEmu: number } | undefined {
+): { widthEmu?: number; heightEmu?: number } | undefined {
 	const table = graphicData?.['a:tbl'] as XmlObject | undefined;
 	if (!table) {
 		return undefined;
 	}
 	const grid = table['a:tblGrid'] as XmlObject | undefined;
-	const widthEmu = ensureArrayLike(
-		grid?.['a:gridCol'] as XmlObject | XmlObject[] | undefined,
-	).reduce((sum, column) => sum + readPositiveInteger(column?.['@_w']), 0);
-	const heightEmu = ensureArrayLike(table['a:tr'] as XmlObject | XmlObject[] | undefined).reduce(
-		(sum, row) => sum + readPositiveInteger(row?.['@_h']),
-		0,
-	);
-	return widthEmu > 0 && heightEmu > 0 ? { widthEmu, heightEmu } : undefined;
+	const columns = ensureArrayLike(grid?.['a:gridCol'] as XmlObject | XmlObject[] | undefined);
+	const rows = ensureArrayLike(table['a:tr'] as XmlObject | XmlObject[] | undefined);
+	const columnWidths = columns.map((column) => readPositiveInteger(column?.['@_w']));
+	const rowHeights = rows.map((row) => readPositiveInteger(row?.['@_h']));
+	const widthEmu =
+		columnWidths.length > 0 && columnWidths.every((width) => width > 0)
+			? columnWidths.reduce((sum, width) => sum + width, 0)
+			: undefined;
+	const heightEmu =
+		rowHeights.length > 0 && rowHeights.every((height) => height > 0)
+			? rowHeights.reduce((sum, height) => sum + height, 0)
+			: undefined;
+	return widthEmu || heightEmu ? { widthEmu, heightEmu } : undefined;
 }
 
 /**
@@ -500,10 +505,15 @@ export class PptxGraphicFrameParser implements IPptxGraphicFrameParser {
 				const tableGridExtent = getTableGridExtent(graphicData);
 				return {
 					...baseElement,
-					...(tableGridExtent
+					...(tableGridExtent?.widthEmu
+						? { width: Math.round(tableGridExtent.widthEmu / this.context.emuPerPx) }
+						: {}),
+					...(tableGridExtent?.heightEmu
 						? {
-								width: Math.round(tableGridExtent.widthEmu / this.context.emuPerPx),
-								height: Math.round(tableGridExtent.heightEmu / this.context.emuPerPx),
+								height: Math.max(
+									baseElement.height,
+									Math.round(tableGridExtent.heightEmu / this.context.emuPerPx),
+								),
 							}
 						: {}),
 					tableData,

@@ -23,6 +23,8 @@ export interface StoryboardShot {
 	effectLabel: string;
 	durationMs: number;
 	script: string;
+	scriptOrigin?: 'manual' | 'ai';
+	scriptLocked?: boolean;
 	scriptCues?: { preCue: string; revealCue: string; postCue: string };
 	subtitlesEnabled?: boolean;
 }

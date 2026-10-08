@@ -4,7 +4,6 @@ import {
 	formatBytes,
 	getContainerStyle,
 	getOleAriaLabel,
-	getOleBadgeLabel,
 	getOleDisplayName,
 	getOleTypeColor,
 	getOleTypeLabel,
@@ -14,7 +13,7 @@ import {
 	resolveOleType,
 } from 'pptx-viewer-shared';
 
-import { createEl, createSvgEl } from '../dom';
+import { createEl } from '../dom';
 import type { ElementRenderContext, ElementRenderer } from '../types';
 import { buildOleIcon } from './ole-icons';
 
@@ -48,7 +47,7 @@ export const renderOleElement: ElementRenderer = (element, zIndex, context) => {
 	el.title = infoLines(element, typeLabel).join('\n');
 
 	if (element.previewImageData) {
-		el.appendChild(buildPreview(doc, element, typeColor, getOleBadgeLabel(oleType)));
+		el.appendChild(buildPreview(doc, element));
 	} else {
 		el.appendChild(buildPlaceholder(doc, element, oleType, typeColor, typeLabel));
 	}
@@ -77,12 +76,7 @@ function infoLines(el: OlePptxElement, typeLabel: string): string[] {
 }
 
 /** Preview image with the small type badge overlay (bottom-right). */
-function buildPreview(
-	doc: Document,
-	el: OlePptxElement,
-	typeColor: string,
-	badgeLabel: string,
-): HTMLElement {
+function buildPreview(doc: Document, el: OlePptxElement): HTMLElement {
 	const preview = createEl(doc, 'div', 'pptxv-ole-preview', {
 		position: 'relative',
 		width: '100%',
@@ -101,27 +95,6 @@ function buildPreview(
 	img.draggable = false;
 	preview.appendChild(img);
 
-	const badge = createSvgEl(doc, 'svg', { width: 24, height: 24, viewBox: '0 0 24 24' });
-	badge.setAttribute('class', 'pptxv-ole-badge');
-	// Decorative overlay: never intercept clicks meant for the action bar.
-	badge.setAttribute(
-		'style',
-		'position:absolute;bottom:4px;right:4px;z-index:10;pointer-events:none',
-	);
-	badge.appendChild(
-		createSvgEl(doc, 'rect', { x: 2, y: 2, width: 20, height: 20, rx: 3, fill: typeColor }),
-	);
-	const badgeText = createSvgEl(doc, 'text', {
-		x: 12,
-		y: 16,
-		'text-anchor': 'middle',
-		fill: 'white',
-		'font-size': badgeLabel.length > 4 ? 6 : 10,
-		'font-weight': 'bold',
-	});
-	badgeText.textContent = badgeLabel;
-	badge.appendChild(badgeText);
-	preview.appendChild(badge);
 	return preview;
 }
 

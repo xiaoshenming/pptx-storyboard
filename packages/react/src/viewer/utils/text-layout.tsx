@@ -69,11 +69,11 @@ export function getTextLayoutStyle(element: PptxElement): React.CSSProperties {
 			? {
 					width: textWrapNone ? ('max-content' as const) : '100%',
 					minWidth: '100%',
-					height: 'max-content',
-					minHeight: '100%',
+					height: '100%',
+					minHeight: 0,
 					whiteSpace: 'pre-wrap' as const,
 					wordBreak: textWrapNone ? ('normal' as const) : ('break-word' as const),
-					overflow: 'visible' as const,
+					overflow: 'hidden' as const,
 				}
 			: {}),
 		...(textWrapNone

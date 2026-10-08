@@ -3,7 +3,6 @@ import type { OlePptxElement, PptxElement } from 'pptx-viewer-core';
 import {
 	formatBytes,
 	getOleAriaLabel,
-	getOleBadgeLabel,
 	getOleDisplayName,
 	getOleIconShapes,
 	getOleTypeColor,
@@ -136,9 +135,6 @@ function stopInteraction(event: Event): void {
 	event.stopPropagation();
 }
 
-/** Short uppercase badge text for the preview overlay. */
-const badgeLabel = computed(() => getOleBadgeLabel(oleType.value));
-
 const placeholderStyle = computed<CSSProperties>(() => ({
 	border: `2px solid ${typeColor.value}33`,
 	borderRadius: '6px',
@@ -158,19 +154,6 @@ const placeholderStyle = computed<CSSProperties>(() => ({
 		<!-- Preview image with type badge overlay -->
 		<div v-if="previewSrc" class="pptx-vue-ole-preview">
 			<img :src="previewSrc" :alt="ariaLabel" class="pptx-vue-ole-img" draggable="false" />
-			<svg class="pptx-vue-ole-badge" width="24" height="24" viewBox="0 0 24 24">
-				<rect x="2" y="2" width="20" height="20" rx="3" :fill="typeColor" />
-				<text
-					x="12"
-					y="16"
-					text-anchor="middle"
-					fill="white"
-					:font-size="badgeLabel.length > 4 ? 6 : 10"
-					font-weight="bold"
-				>
-					{{ badgeLabel }}
-				</text>
-			</svg>
 		</div>
 
 		<!-- Type-specific placeholder box -->

@@ -78,9 +78,8 @@ export function buildParagraphs(
 			: [];
 	}
 
-	// `a:normAutofit/@fontScale`: applied to every authored run size below, since
-	// a run's own `sz` overrides the (already scaled) body font-size.
-	const fontScale = resolveAutoFitFontScale(element.textStyle);
+	// Apply the authored normAutofit scale to every run with its own font size.
+	const fontScale = resolveAutoFitFontScale(element.textStyle, element);
 	// What a run that declares no font of its own inherits from the text body.
 	// Only used to measure the run for its PowerPoint metric compensation, so it
 	// mirrors what `buildTextBlockStyle` declares on the block itself.

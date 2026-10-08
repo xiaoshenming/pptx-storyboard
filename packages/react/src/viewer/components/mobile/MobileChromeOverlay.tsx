@@ -128,6 +128,7 @@ export function MobileChromeOverlay(props: MobileChromeOverlayProps): React.Reac
 				onSlideContextMenu={editorOps.slideOps.handleSlideContextMenu}
 				onMoveSlide={editorOps.slideOps.handleMoveSlide}
 				onAddSlide={editorOps.slideOps.handleAddSlide}
+				onDeleteSlides={editorOps.slideOps.handleDeleteSlides}
 				onCollapse={() => s.setIsSlidesPaneOpen(false)}
 				onAddSection={editorOps.sectionOps.addSection}
 				onRenameSection={editorOps.sectionOps.renameSection}

@@ -25,6 +25,7 @@ import {
 import type { TimelineDragState } from './timeline-drag-controller';
 import { KIND_ICON, TimelineTrackRow } from './TimelineClipCard';
 import { TimelineClipContextMenu } from './TimelineClipContextMenu';
+import { useTimelineViewport } from './use-timeline-viewport';
 
 interface MultiTrackTimelineProps {
 	timeline: TimelineModel;
@@ -38,6 +39,7 @@ interface MultiTrackTimelineProps {
 	onSelectClip?: (clipId: string | undefined) => void;
 	onSeek?: (playheadMs: number) => void;
 	onPlayAll: () => void;
+	height?: number | string;
 }
 
 export function MultiTrackTimeline({
@@ -51,14 +53,19 @@ export function MultiTrackTimeline({
 	onSelectClip,
 	onSeek,
 	onPlayAll,
+	height = 320,
 }: MultiTrackTimelineProps): React.ReactElement {
 	const [pixelsPerSecond, setPixelsPerSecond] = useState(80);
 	const [drag, setDrag] = useState<TimelineDragState | null>(null);
+	const dragRef = useRef<TimelineDragState | null>(null);
+	const timelineRef = useRef(timeline);
+	timelineRef.current = timeline;
 	const [menu, setMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
 	const [hoveredClipId, setHoveredClipId] = useState<string | undefined>(undefined);
 	const [magnetAnchorId, setMagnetAnchorId] = useState<string | null>(null);
 	// 刚结束一次真实拖拽（moved）时吞掉紧随的 click，避免落点误触发选中/seek。
 	const dragJustMovedRef = useRef(false);
+	const scrollViewportRef = useRef<HTMLDivElement>(null);
 	const spanMs = timeline.durationMs + 2000;
 	const canvasWidth = Math.max(900, millisecondsToPixels(spanMs, pixelsPerSecond));
 	const menuClip = menu ? findTimelineClip(timeline, menu.clipId)?.clip : undefined;
@@ -73,6 +80,8 @@ export function MultiTrackTimeline({
 		!magnetAnchorId
 			? drag.clipId
 			: undefined;
+
+	useTimelineViewport(scrollViewportRef, timeline, selectedSourceId, pixelsPerSecond);
 
 	const applyEdit = (result: TimelineEditResult) => {
 		if (result.accepted) {
@@ -92,33 +101,48 @@ export function MultiTrackTimeline({
 
 	const commitFrame = (result: TimelineEditResult, clientX: number) => {
 		onChange(result.timeline);
-		if (!drag) {
+		const currentDrag = dragRef.current;
+		if (!currentDrag) {
 			return;
 		}
-		const clip = clipAfterEdit(result, drag.clipId) ?? drag.clip;
-		setDrag(withDragClientX({ ...drag, clip }, clientX));
+		const clip = clipAfterEdit(result, currentDrag.clipId) ?? currentDrag.clip;
+		const nextDrag = withDragClientX({ ...currentDrag, clip }, clientX);
+		dragRef.current = nextDrag;
+		setDrag(nextDrag);
 	};
 
 	const handlePointerMove = (event: React.PointerEvent) => {
-		if (!drag) {
+		const currentDrag = dragRef.current;
+		if (!currentDrag) {
 			return;
 		}
+		event.preventDefault();
 		const clientX = event.clientX;
 		// P1 帧 gate：未过拖拽阈值的抖动直接 return，不产生任何 onChange，
 		// 避免受控父级采纳中间态后绑定被静默丢弃（plan* 内同样有 gate）。
-		if (!dragPassedMoveThreshold(drag, clientX)) {
+		if (!dragPassedMoveThreshold(currentDrag, clientX)) {
 			return;
 		}
-		if (drag.mode === 'resize-end') {
-			const result = planResizeFrame({ timeline, drag, clientX, pixelsPerSecond });
+		if (currentDrag.mode === 'resize-end') {
+			const result = planResizeFrame({
+				timeline: timelineRef.current,
+				drag: currentDrag,
+				clientX,
+				pixelsPerSecond,
+			});
 			if (result) {
 				commitFrame(result, clientX);
 			}
 			return;
 		}
-		if (drag.clip.kind === 'narration') {
+		if (currentDrag.clip.kind === 'narration') {
 			// 磁吸：候选锚点在阈值内则吸附，松手时按吸附决策绑定。
-			const frame = planNarrationMoveFrame({ timeline, drag, clientX, pixelsPerSecond });
+			const frame = planNarrationMoveFrame({
+				timeline: timelineRef.current,
+				drag: currentDrag,
+				clientX,
+				pixelsPerSecond,
+			});
 			if (!frame) {
 				return;
 			}
@@ -126,7 +150,12 @@ export function MultiTrackTimeline({
 			commitFrame(frame.result, clientX);
 			return;
 		}
-		const result = planMoveFrame({ timeline, drag, clientX, pixelsPerSecond });
+		const result = planMoveFrame({
+			timeline: timelineRef.current,
+			drag: currentDrag,
+			clientX,
+			pixelsPerSecond,
+		});
 		if (result) {
 			commitFrame(result, clientX);
 		}
@@ -165,8 +194,11 @@ export function MultiTrackTimeline({
 				return;
 			}
 			event.currentTarget.setPointerCapture(event.pointerId);
+			event.preventDefault();
 			dragJustMovedRef.current = false;
-			setDrag(beginTimelineDrag(clip, 'move', event.clientX));
+			const nextDrag = beginTimelineDrag(clip, 'move', event.clientX);
+			dragRef.current = nextDrag;
+			setDrag(nextDrag);
 		},
 		onContextMenu: (clip: TimelineClip, event: React.MouseEvent<HTMLButtonElement>) => {
 			event.preventDefault();
@@ -179,14 +211,21 @@ export function MultiTrackTimeline({
 			}
 			event.stopPropagation();
 			event.currentTarget.setPointerCapture(event.pointerId);
+			event.preventDefault();
 			dragJustMovedRef.current = false;
-			setDrag(beginTimelineDrag(clip, 'resize-end', event.clientX));
+			const nextDrag = beginTimelineDrag(clip, 'resize-end', event.clientX);
+			dragRef.current = nextDrag;
+			setDrag(nextDrag);
 		},
 		onHoverChange: setHoveredClipId,
 	};
 
 	return (
-		<section className='h-[270px] shrink-0 border-t border-slate-200 bg-slate-950 text-white'>
+		<section
+			className='flex min-h-0 flex-col overflow-hidden bg-slate-950 text-white'
+			style={{ height }}
+			data-testid='storyboard-timeline'
+		>
 			<header className='flex h-11 items-center gap-3 border-b border-white/10 px-4 text-xs'>
 				<strong>专业时间轴</strong>
 				<span className='text-slate-500'>旁白拖到锚点即绑定，自由落点解绑</span>
@@ -212,7 +251,12 @@ export function MultiTrackTimeline({
 					/>
 				</label>
 			</header>
-			<div className='flex h-[226px]'>
+			<div
+				className='flex min-h-0 flex-1 overflow-y-auto overflow-x-hidden'
+				style={{
+					height: typeof height === 'number' ? Math.max(120, height - 44) : undefined,
+				}}
+			>
 				<div className='w-28 shrink-0 border-r border-white/10 pt-6'>
 					{timeline.tracks.map((track) => (
 						<div
@@ -226,28 +270,40 @@ export function MultiTrackTimeline({
 					))}
 				</div>
 				<div
-					className='min-w-0 flex-1 overflow-auto'
+					ref={scrollViewportRef}
+					data-timeline-scroll-viewport
+					className='pptx-storyboard-timeline-scroll min-w-0 flex-1 overflow-x-auto overflow-y-visible'
 					onPointerMove={handlePointerMove}
 					onPointerUp={() => {
-						if (drag?.moved) {
+						const currentDrag = dragRef.current;
+						if (currentDrag?.moved) {
 							dragJustMovedRef.current = true;
 						}
-						const release = drag
-							? resolveNarrationRelease({ timeline, drag, pixelsPerSecond })
+						const release = currentDrag
+							? resolveNarrationRelease({
+									timeline: timelineRef.current,
+									drag: currentDrag,
+									pixelsPerSecond,
+								})
 							: undefined;
 						if (release?.result) {
 							applyEdit(release.result);
 						}
 						setMagnetAnchorId(null);
+						dragRef.current = null;
 						setDrag(null);
 					}}
 					onPointerCancel={() => {
 						// 回弹：开始时有绑定的旁白按原绑定 rebind 回锚点位置。
-						const rollback = drag ? rollbackNarrationDrag({ timeline, drag }) : undefined;
+						const currentDrag = dragRef.current;
+						const rollback = currentDrag
+							? rollbackNarrationDrag({ timeline: timelineRef.current, drag: currentDrag })
+							: undefined;
 						if (rollback?.accepted) {
 							onChange(rollback.timeline);
 						}
 						setMagnetAnchorId(null);
+						dragRef.current = null;
 						setDrag(null);
 					}}
 				>

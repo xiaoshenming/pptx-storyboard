@@ -164,10 +164,6 @@ function StaticElementRendererImpl({
 		element.type === 'shape' && hasFill ? defaultTextColorForFill(fill) : DEFAULT_TEXT_COLOR,
 	);
 	const isImage = element.type === 'picture' || element.type === 'image';
-	const letsTextOverflow =
-		hasTextProperties(element) &&
-		element.textStyle?.autoFitMode === 'shrink' &&
-		(element.type === 'text' || element.locks?.txBox === true);
 	const shapeType = hasShapeProperties(element) ? element.shapeType : undefined;
 	const isCallout =
 		isWedgeCalloutPresetShape(shapeType) ||
@@ -207,11 +203,7 @@ function StaticElementRendererImpl({
 			// while the live stage (ConnectorElementRenderer, an unclipped
 			// MIN_ELEMENT_SIZE box) drew them fine.
 			className={`${positioned ? 'absolute' : 'relative'} ${
-				isImage ||
-				element.type === 'group' ||
-				isConnectorOrLineElement(element) ||
-				isCallout ||
-				letsTextOverflow
+				isImage || element.type === 'group' || isConnectorOrLineElement(element) || isCallout
 					? ''
 					: 'overflow-hidden'
 			} ${isActionable ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}`}

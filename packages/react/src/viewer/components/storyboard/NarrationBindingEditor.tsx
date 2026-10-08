@@ -54,8 +54,8 @@ export const STATIC_SHOT_ADVANCED = '高级：跟随其他分镜动画';
 
 function EditorPanel({ children }: { children: React.ReactNode }): React.ReactElement {
 	return (
-		<div className='rounded-xl border border-slate-200 p-4'>
-			<div className='mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800'>
+		<div className='rounded-xl border border-slate-700 bg-slate-900/50 p-4'>
+			<div className='mb-3 flex items-center gap-2 text-sm font-semibold text-slate-100'>
 				<LuLink /> 动画绑定
 			</div>
 			{children}
@@ -167,7 +167,7 @@ function BindingForm({
 							onChange(createTimelineBinding(anchorId, 'with-animation', 0, false));
 						}
 					}}
-					className='mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-orange-400 focus:bg-white'
+					className='mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-orange-400'
 				>
 					<option value=''>{FREE_TIME_OPTION}</option>
 					{renderGroup(OWN_GROUP_LABEL, own)}
@@ -189,7 +189,7 @@ function BindingForm({
 								onClick={() => update({ mode })}
 								className={
 									active
-										? 'flex-1 rounded-md bg-white px-1 py-1.5 font-semibold text-orange-600 shadow-sm'
+										? 'flex-1 rounded-md bg-slate-800 px-1 py-1.5 font-semibold text-orange-300 shadow-sm'
 										: 'flex-1 rounded-md px-1 py-1.5 text-slate-500 disabled:text-slate-300'
 								}
 							>
@@ -216,7 +216,7 @@ function BindingForm({
 								update({ offsetMs });
 							}
 						}}
-						className='w-24 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-orange-400 focus:bg-white disabled:text-slate-300'
+						className='w-24 rounded-lg border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-slate-100 outline-none focus:border-orange-400 disabled:text-slate-600'
 					/>
 				</label>
 				{binding && (
@@ -240,7 +240,7 @@ function BindingForm({
 				type='button'
 				disabled={!binding}
 				onClick={() => onChange(undefined)}
-				className='mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:border-orange-300 hover:text-orange-600 disabled:opacity-50'
+				className='mt-3 w-full rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold text-slate-300 hover:border-orange-300 hover:text-orange-300 disabled:opacity-50'
 			>
 				解除绑定
 			</button>

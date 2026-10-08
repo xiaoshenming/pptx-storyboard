@@ -8,7 +8,6 @@ import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LuEyeOff, LuMessageSquare } from 'react-icons/lu';
 
-import { SLIDE_NAV_THUMBNAIL_WIDTH } from '../../constants';
 import type { CanvasSize } from '../../types';
 import { cn } from '../../utils';
 import type { TableStyleContext } from '../../utils/table-band-style';
@@ -95,12 +94,6 @@ function SlideItemInner({
 		[canEdit, onAddSection, onOpenSlideCtxMenu, onSlideContextMenu, slideIndex],
 	);
 
-	// Pre-compute the thumbnail height for the placeholder
-	const safeCanvasWidth = Math.max(canvasSize.width, 1);
-	const safeCanvasHeight = Math.max(canvasSize.height, 1);
-	const scale = SLIDE_NAV_THUMBNAIL_WIDTH / safeCanvasWidth;
-	const previewHeight = Math.max(56, Math.round(safeCanvasHeight * scale));
-
 	return (
 		<button
 			type='button'
@@ -162,7 +155,6 @@ function SlideItemInner({
 					slide={slide}
 					templateElements={templateElements}
 					canvasSize={canvasSize}
-					previewHeight={previewHeight}
 					fieldContext={fieldContext}
 					tableStyleContext={tableStyleContext}
 				/>

@@ -181,6 +181,7 @@ export function ViewerMainContent(props: ViewerMainContentProps) {
 							onSlideContextMenu={slideOps.handleSlideContextMenu}
 							onMoveSlide={slideOps.handleMoveSlide}
 							onAddSlide={slideOps.handleAddSlide}
+							onDeleteSlides={slideOps.handleDeleteSlides}
 							onCollapse={() => state.setIsSlidesPaneOpen(false)}
 							onAddSection={sectionOps.addSection}
 							onRenameSection={sectionOps.renameSection}

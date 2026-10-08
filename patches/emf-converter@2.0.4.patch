@@ -1,0 +1,66 @@
+diff --git a/dist/index.js b/dist/index.js
+index 7131701da1f13a2e173931e82981ed33f9207e69..fa52dbbc61a5c3a22489ba7b1db3632bb1621d50 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -647,10 +647,18 @@ function parseEmfHeader(view) {
+       bottom: boundsBottom
+     },
+     frameW,
+-    frameH
++    frameH,
++    // EMF frame uses 0.01 mm; convert with the reference device metrics.
++    frameBounds: view.getInt32(80, true) > 0 && view.getInt32(84, true) > 0 && view.getInt32(72, true) > 0 && view.getInt32(76, true) > 0 && frameW > 0 && frameH > 0 ? {
++      left: frameLeft * view.getInt32(72, true) / (100 * view.getInt32(80, true)),
++      top: frameTop * view.getInt32(76, true) / (100 * view.getInt32(84, true)),
++      right: frameRight * view.getInt32(72, true) / (100 * view.getInt32(80, true)),
++      bottom: frameBottom * view.getInt32(76, true) / (100 * view.getInt32(84, true))
++    } : undefined
+   };
+ }
+ function getRenderableEmfBounds(header) {
++  if (header.frameBounds) return header.frameBounds;
+   const boundsW = header.bounds.right - header.bounds.left;
+   const boundsH = header.bounds.bottom - header.bounds.top;
+   if (boundsW > 0 && boundsH > 0) {
+@@ -2105,7 +2113,7 @@ function handleEmfObjectRecord(rCtx, recType, dataOff, recSize) {
+         const italic = view.getUint8(dataOff + 24);
+         const underline = view.getUint8(dataOff + 25);
+         const strikeOut = view.getUint8(dataOff + 26);
+-        const family = readUtf16LE(view, dataOff + 28, 32) || "sans-serif";
++        const family = readUtf16LE(view, dataOff + 32, 32) || "sans-serif";
+         rCtx.objectTable.set(ihFont, {
+           kind: "font",
+           height: Math.abs(height),
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 34f6e2f57478e7e7c11d5aff952976ed66976db0..938ca66ebb3cb61a16ee1d33c5a8c8bbfc598364 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -645,10 +645,18 @@ function parseEmfHeader(view) {
+       bottom: boundsBottom
+     },
+     frameW,
+-    frameH
++    frameH,
++    // EMF frame uses 0.01 mm; convert with the reference device metrics.
++    frameBounds: view.getInt32(80, true) > 0 && view.getInt32(84, true) > 0 && view.getInt32(72, true) > 0 && view.getInt32(76, true) > 0 && frameW > 0 && frameH > 0 ? {
++      left: frameLeft * view.getInt32(72, true) / (100 * view.getInt32(80, true)),
++      top: frameTop * view.getInt32(76, true) / (100 * view.getInt32(84, true)),
++      right: frameRight * view.getInt32(72, true) / (100 * view.getInt32(80, true)),
++      bottom: frameBottom * view.getInt32(76, true) / (100 * view.getInt32(84, true))
++    } : undefined
+   };
+ }
+ function getRenderableEmfBounds(header) {
++  if (header.frameBounds) return header.frameBounds;
+   const boundsW = header.bounds.right - header.bounds.left;
+   const boundsH = header.bounds.bottom - header.bounds.top;
+   if (boundsW > 0 && boundsH > 0) {
+@@ -2103,7 +2111,7 @@ function handleEmfObjectRecord(rCtx, recType, dataOff, recSize) {
+         const italic = view.getUint8(dataOff + 24);
+         const underline = view.getUint8(dataOff + 25);
+         const strikeOut = view.getUint8(dataOff + 26);
+-        const family = readUtf16LE(view, dataOff + 28, 32) || "sans-serif";
++        const family = readUtf16LE(view, dataOff + 32, 32) || "sans-serif";
+         rCtx.objectTable.set(ihFont, {
+           kind: "font",
+           height: Math.abs(height),

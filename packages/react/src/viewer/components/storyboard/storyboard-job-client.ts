@@ -3,6 +3,7 @@ import type { PptxElement, PptxSlide } from 'pptx-viewer-core';
 
 import type { CanvasSize } from '../../types';
 import { captureStoryboardShotsAsPng } from './capture';
+import { assertStoryboardExportReady, storyboardJobError } from './storyboard-export-validation';
 import type { StoryboardShot } from './storyboard-model';
 import type { TimelineBinding, TimelineModel } from './timeline';
 import { millisecondsToFrame } from './timeline';
@@ -28,6 +29,7 @@ export interface StoryboardJobProgress {
 		ttsConcurrency: number;
 		ttsProvider?: string;
 		elapsedMs: number;
+		ttsElapsedMs?: number;
 		outputDurationMs: number;
 		verifiedDurationMs?: number;
 		outputBytes?: number;
@@ -175,15 +177,6 @@ interface CreateJobInput {
 export async function createStoryboardRenderJob(
 	input: CreateJobInput,
 ): Promise<StoryboardJobProgress> {
-	const frames = await captureStoryboardShotsAsPng({
-		shots: input.shots,
-		slides: input.slides,
-		templateElementsBySlideId: input.templateElementsBySlideId,
-		canvasSize: input.canvasSize,
-		concurrency: 4,
-		onProgress: ({ completed, total }) => input.onCaptureProgress?.(completed, total),
-	});
-	const zip = new JSZip();
 	const manifest = buildStoryboardManifest({
 		fileName: input.fileName,
 		width: input.width,
@@ -194,6 +187,17 @@ export async function createStoryboardRenderJob(
 		timeline: input.timeline,
 		bindingRevision: input.bindingRevision,
 	});
+	assertStoryboardExportReady(manifest);
+	const frames = await captureStoryboardShotsAsPng({
+		shots: input.shots,
+		slides: input.slides,
+		templateElementsBySlideId: input.templateElementsBySlideId,
+		canvasSize: input.canvasSize,
+		concurrency: 4,
+		onProgress: ({ completed, total }) => input.onCaptureProgress?.(completed, total),
+	});
+	const zip = new JSZip();
+
 	zip.file('manifest.json', JSON.stringify(manifest));
 	frames.forEach((frame, index) => zip.file(manifest.shots[index].frameFile, frame.png));
 	const body = await zip.generateAsync({
@@ -207,7 +211,7 @@ export async function createStoryboardRenderJob(
 		body,
 	});
 	if (!response.ok) {
-		throw new Error(`创建视频任务失败：HTTP ${response.status}`);
+		throw await storyboardJobError(response);
 	}
 	return response.json() as Promise<StoryboardJobProgress>;
 }

@@ -47,12 +47,6 @@
 			<div class="pptx-svelte-ole-preview">
 				<img class="pptx-svelte-ole-img" src={view.previewSrc} alt={view.ariaLabel} draggable="false" />
 				<!-- Decorative badge overlay: never intercepts action-bar clicks. -->
-				<svg class="pptx-svelte-ole-badge" width="24" height="24" viewBox="0 0 24 24">
-					<rect x="2" y="2" width="20" height="20" rx="3" fill={view.typeColor} />
-					<text x="12" y="16" text-anchor="middle" fill="white" font-size={view.badgeFontSize} font-weight="bold">
-						{view.badgeLabel}
-					</text>
-				</svg>
 			</div>
 		{:else}
 			<div class="pptx-svelte-ole-placeholder" style={view.placeholderStyle}>

@@ -42,6 +42,7 @@ export function SlidesPaneSidebar({
 	onSlideContextMenu,
 	onMoveSlide,
 	onAddSlide,
+	onDeleteSlides,
 	onCollapse: _onCollapse,
 	onAddSection,
 	onRenameSection,
@@ -374,9 +375,11 @@ export function SlidesPaneSidebar({
 				/>
 			)}
 
-			{slideCtxMenu && (
+			{slideCtxMenu && canEdit && (
 				<SlideContextMenu
 					state={slideCtxMenu}
+					canDelete={slides.length > 1}
+					onDeleteSlide={onDeleteSlides ? (index) => onDeleteSlides([index]) : undefined}
 					onAddSection={onAddSection}
 					onClose={closeSlideCtxMenu}
 				/>

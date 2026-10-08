@@ -38,6 +38,19 @@ export interface FileViewerHandle {
 	getContent: () => Promise<string | Uint8Array>;
 }
 
+export interface StoryboardAutoGenerateOptions {
+	/** Override subtitles for all shots in this automatic export. */
+	subtitlesEnabled?: boolean;
+	/** Whether to replace unlocked scripts with AI-generated teaching narration before export. */
+	polish: boolean;
+	/** Intended learners, for example “小学五年级学生”. */
+	audience: string;
+	/** How much explanation and reasoning the narration should include. */
+	detail: 'brief' | 'standard' | 'detailed';
+	/** Optional teaching emphasis or constraints supplied to the narration model. */
+	supplement?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Shape presets (UI-only - icons are ReactNode)
 // ---------------------------------------------------------------------------
@@ -550,6 +563,20 @@ export interface PowerPointViewerProps {
 	storyboardTtsEndpoint?: string;
 	/** Background render-job endpoint used for parallel TTS, rendering, progress, cancellation and MP4 download. */
 	storyboardJobEndpoint?: string;
+	/** Stable host project identity for storyboard persistence. */
+	storyboardProjectKey?: string;
+	/** Open the storyboard automatically and start one video export after the deck is parsed. */
+	storyboardAutoGenerate?: boolean;
+	/** Narration choices used by automatic project-card video generation. */
+	storyboardAutoGenerateOptions?: StoryboardAutoGenerateOptions;
+	/** Receives capture and server-render progress for host-level project cards. */
+	onStoryboardGenerationProgress?: (progress: {
+		stage: string;
+		progress: number;
+		status: string;
+		jobId?: string;
+		terminal?: boolean;
+	}) => void;
 }
 
 export interface PowerPointViewerHandle extends FileViewerHandle, PowerPointViewerAPI {

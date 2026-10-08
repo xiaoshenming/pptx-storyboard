@@ -36,6 +36,16 @@ export interface ScriptFontSet {
 	symbol: string;
 }
 
+/** Whether a run is predominantly CJK and should use its a:ea face for metrics. */
+export function prefersEastAsiaFont(text: string | undefined): boolean {
+	if (!text) {
+		return false;
+	}
+	const cjk = (text.match(/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/gu) ?? []).length;
+	const latin = (text.match(/[A-Za-z]/gu) ?? []).length;
+	return cjk > 0 && cjk >= latin * 2;
+}
+
 /** The `a:ea` / `a:cs` / `a:sym` typeface + PANOSE fields a run or body may carry. */
 export type ScriptFontFields = Pick<
 	TextStyle,

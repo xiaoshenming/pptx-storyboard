@@ -7,7 +7,7 @@
  * unions of CSS keyword values), never a framework's `CSSProperties` type, so
  * each binding can assign or cast the results into its own style object.
  */
-import type { TextStyle } from 'pptx-viewer-core';
+import type { PptxElement, TextStyle } from 'pptx-viewer-core';
 
 import { proportionalLineHeight } from './text-line-height';
 
@@ -147,19 +147,24 @@ export interface AutoFitResult {
 }
 
 /**
- * The `a:normAutofit/@fontScale` multiplier every RUN of a body must be painted
- * at, or `1` when the body does not shrink its text.
+ * The font multiplier every RUN of a body must be painted at. An authored
+ * Only `a:normAutofit/@fontScale` scales text. `a:spAutoFit` resizes the shape;
+ * deriving a font scale from box dimensions changes the authored typography.
  *
- * The body-level {@link computeAutoFitTextStyle} only scales the block's own
- * `font-size`, which a run carrying its own `sz` (nearly every authored run)
- * overrides, so a shrink-to-fit title painted 43% too large. Every binding's run
- * builder multiplies by this, exactly as React's `renderSingleSegment` does.
+ * The body-level font-size alone cannot scale runs with their own `sz`, so all
+ * bindings apply this multiplier to both the body and each run.
  *
- * Out-of-range scales are ignored: `>= 1` is not a shrink, `<= 0` is not a size.
+ * Out-of-range authored scales are ignored.
  */
-export function resolveAutoFitFontScale(textStyle: TextStyle | undefined): number {
+export function resolveAutoFitFontScale(
+	textStyle: TextStyle | undefined,
+	_element?: PptxElement,
+): number {
 	const scale = textStyle?.autoFitFontScale;
-	return typeof scale === 'number' && scale > 0 && scale < 1 ? scale : 1;
+	if (typeof scale === 'number' && scale > 0 && scale < 1 && textStyle?.autoFitMode !== 'shrink') {
+		return scale;
+	}
+	return 1;
 }
 
 /**

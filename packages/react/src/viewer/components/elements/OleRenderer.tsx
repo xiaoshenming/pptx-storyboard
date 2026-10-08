@@ -9,7 +9,6 @@ import {
 	getOleIcon,
 	getOleTypeColor,
 	getOleTypeLabel,
-	renderOleBadge,
 	resolveOleType,
 } from './InkGroupRenderers';
 
@@ -153,7 +152,6 @@ export function OleRenderer({ element: el }: OleRendererProps): React.ReactNode 
 					className='pointer-events-none select-none w-full h-full object-contain'
 					draggable={false}
 				/>
-				{renderOleBadge(oleType)}
 				<OleActionFooter el={el} info={info} />
 			</div>
 		);

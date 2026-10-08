@@ -5,7 +5,7 @@
  * (Office 2010+ `aink` namespace) so loaded ink elements survive the
  * `unknown`-type fallback and round-trip via `rawXml`.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import type { OlePptxElement, TablePptxElement, XmlObject } from '../../types';
 import { PptxGraphicFrameParser } from './PptxGraphicFrameParser';
@@ -228,7 +228,38 @@ describe('pptxGraphicFrameParser.parseGraphicFrameType', () => {
 });
 
 describe('pptxGraphicFrameParser table dimensions', () => {
-	it('uses table grid and row extents when the graphic frame extent is stale', () => {
+	it.each([
+		{ page: 2, height: 2326259, rows: [586740, 597408, 597408] },
+		{ page: 5, height: 2284222, rows: [0, 0] },
+		{ page: 6, height: 5007158, rows: [0, 0, 2722936] },
+		{ page: 'expanded grid', height: 1000000, rows: [800000, 800000] },
+	])('preserves the full table extent for $page', ({ height, rows }) => {
+		const parser = makeParser({ parseTableData: () => ({ rows: [], columnWidths: [] }) });
+		const result = parser.parseGraphicFrame(
+			{
+				'p:xfrm': { 'a:off': {}, 'a:ext': { '@_cx': '11377264', '@_cy': String(height) } },
+				'a:graphic': {
+					'a:graphicData': {
+						'a:tbl': {
+							'a:tblGrid': { 'a:gridCol': { '@_w': '11377264' } },
+							'a:tr': rows.map((h) => ({ '@_h': String(h) })),
+						},
+					},
+				},
+			},
+			'table-regression',
+		) as TablePptxElement;
+		expect(result.height).toBe(
+			Math.round(
+				Math.max(
+					height,
+					rows.reduce((a, b) => a + b, 0),
+				) / 9525,
+			),
+		);
+	});
+
+	it('expands a stale frame to fit the table grid without shrinking its authored height', () => {
 		const parser = makeParser({ parseTableData: () => ({ rows: [], columnWidths: [] }) });
 		const frame: XmlObject = {
 			'p:xfrm': {
@@ -249,7 +280,7 @@ describe('pptxGraphicFrameParser table dimensions', () => {
 
 		const result = parser.parseGraphicFrame(frame, 'table-1') as TablePptxElement;
 		expect(result.width).toBe(Math.round((1587775 + 2380350) / 9525));
-		expect(result.height).toBe(Math.round((451725 + 729375) / 9525));
+		expect(result.height).toBe(Math.round(3000000 / 9525));
 	});
 
 	it('keeps the frame extent when table grid dimensions are unavailable', () => {
@@ -265,5 +296,29 @@ describe('pptxGraphicFrameParser table dimensions', () => {
 		const result = parser.parseGraphicFrame(frame, 'table-2') as TablePptxElement;
 		expect(result.width).toBe(240);
 		expect(result.height).toBe(180);
+	});
+
+	it('keeps the frame height when some table rows have no explicit height', () => {
+		const parser = makeParser({ parseTableData: () => ({ rows: [], columnWidths: [] }) });
+		const frame: XmlObject = {
+			'p:xfrm': {
+				'a:off': { '@_x': '0', '@_y': '0' },
+				'a:ext': { '@_cx': '11377264', '@_cy': '5007158' },
+			},
+			'a:graphic': {
+				'a:graphicData': {
+					'a:tbl': {
+						'a:tblGrid': {
+							'a:gridCol': [{ '@_w': '5688632' }, { '@_w': '5688632' }],
+						},
+						'a:tr': [{ '@_h': '0' }, { '@_h': '0' }, { '@_h': '2722936' }],
+					},
+				},
+			},
+		};
+
+		const result = parser.parseGraphicFrame(frame, 'table-partial-row-heights') as TablePptxElement;
+		expect(result.width).toBe(Math.round(11377264 / 9525));
+		expect(result.height).toBe(Math.round(5007158 / 9525));
 	});
 });

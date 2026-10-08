@@ -1,0 +1,39 @@
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/simple/Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_PASSWORD: ${APP_PASSWORD:?Set APP_PASSWORD in .env}
+      APP_SESSION_SECRET: ${APP_SESSION_SECRET:?Set APP_SESSION_SECRET in .env}
+      APP_SECURE_COOKIE: '1'
+      STORYBOARD_SERVICE_CONFIG_PATH: /data/service-config.json
+      STORYBOARD_TTS_PROVIDER: edge
+      STORYBOARD_TTS_EDGE: '1'
+      STORYBOARD_EDGE_TTS_COMMAND: /opt/edge-tts/bin/python
+      STORYBOARD_GPU_ENCODING: '0'
+      STORYBOARD_JOB_CONCURRENCY: '1'
+      STORYBOARD_RENDER_CONCURRENCY: '2'
+      TMPDIR: /data/tmp
+    volumes:
+      - storyboard_data:/data
+  web:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?Set SITE_ADDRESS in .env}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  storyboard_data:
+  caddy_data:
+  caddy_config:

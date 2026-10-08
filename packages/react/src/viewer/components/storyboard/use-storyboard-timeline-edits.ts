@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
+import { applyNarrationBatch } from './narration-batch';
 import { changeShotNarrationBinding, visualDurationsByShot } from './playback-model';
 import type { StoryboardShot } from './storyboard-model';
 import {
@@ -18,6 +19,7 @@ export interface StoryboardTimelineEdits {
 	changeNarrationBinding: (binding: TimelineBinding | undefined) => void;
 	/** Patch a shot; script edits also re-time the narration and subtitle clips. */
 	updateShot: (shotId: string, patch: Partial<StoryboardShot>) => void;
+	updateShots: (patches: Array<{ id: string; patch: Partial<StoryboardShot> }>) => void;
 	/** TTS preview duration for a shot's narration, through the same chain. */
 	applyNarrationPreview: (shotId: string, durationMs: number) => void;
 }
@@ -107,6 +109,42 @@ export function useStoryboardTimelineEdits(options: {
 						),
 					),
 				);
+			}
+		},
+		updateShots: (patches) => {
+			if (!patches.length) {
+				return;
+			}
+			const generated = new Map(options.generatedShots.map((shot) => [shot.id, shot]));
+			const prepared = new Map(
+				patches.map(({ id, patch }) => [
+					id,
+					{
+						...patch,
+						...(typeof patch.script === 'string'
+							? {
+									durationMs: Math.max(
+										generated.get(id)?.durationMs ?? 0,
+										estimateScriptDuration(patch.script) + 250,
+									),
+								}
+							: {}),
+					},
+				]),
+			);
+			options.setShots((current) =>
+				current.map((shot) => {
+					const patch = prepared.get(shot.id);
+					return patch ? { ...shot, ...patch } : shot;
+				}),
+			);
+			const updates = [...prepared].flatMap(([id, patch]) =>
+				typeof patch.script === 'string'
+					? [{ id, script: patch.script, durationMs: patch.durationMs! }]
+					: [],
+			);
+			if (updates.length) {
+				options.setTimeline((current) => applyNarrationBatch(current, updates));
 			}
 		},
 		applyNarrationPreview: (shotId, durationMs) => {

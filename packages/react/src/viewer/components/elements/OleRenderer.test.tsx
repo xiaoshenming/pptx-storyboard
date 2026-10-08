@@ -1,7 +1,7 @@
 import type { OlePptxElement } from 'pptx-viewer-core';
 import { translationsEn } from 'pptx-viewer-shared/i18n';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, vi, test, it } from 'vitest';
 
 import { OleRenderer } from './OleRenderer';
 
@@ -167,4 +167,12 @@ describe('oleRenderer info display', () => {
 		expect(html).toContain('aria-label="Excel Spreadsheet: Q3 Budget"');
 		expect(html).not.toContain('>budget.xlsx<');
 	});
+});
+
+test('does not paint an application badge over the authored preview', () => {
+	const html = render(
+		makeOle({ oleObjectType: 'word', previewImageData: 'data:image/png;base64,AA==' }),
+	);
+	expect(html).toContain('<img');
+	expect(html).not.toContain('<svg');
 });

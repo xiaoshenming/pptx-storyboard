@@ -111,5 +111,8 @@
 	"lint-staged": {
 		"*.{js,mjs,cjs,jsx,ts,mts,cts,tsx,json,jsonc,css,scss,less,html,vue,yaml,toml,md,mdx,graphql}": "oxfmt",
 		"*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}": "oxlint --deny-warnings"
+	},
+	"patchedDependencies": {
+		"emf-converter@2.0.4": "patches/emf-converter@2.0.4.patch"
 	}
 }

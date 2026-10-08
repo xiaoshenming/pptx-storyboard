@@ -1,31 +1,36 @@
 import type { PptxElement, PptxSlide } from 'pptx-viewer-core';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { CanvasSize } from '../../types';
+import type { CanvasSize, StoryboardAutoGenerateOptions } from '../../types';
+import { polishStoryboardForVideo } from './auto-polish-narration';
 import { MultiTrackTimeline } from './MultiTrackTimeline';
 import {
 	animationClipsOf,
 	createTargetLabelResolver,
 	narrationClipForShot,
 } from './playback-model';
-import { runStoryboardExport } from './storyboard-export-workflow';
-import { cancelStoryboardRenderJob } from './storyboard-job-client';
-import type { StoryboardJobProgress } from './storyboard-job-client';
+import {
+	captureGenerationProgress,
+	polishGenerationProgress,
+	serverGenerationProgress,
+} from './storyboard-generation-progress';
 import { formatStoryboardTime, storyboardSlideForShot } from './storyboard-model';
 import type { StoryboardShot } from './storyboard-model';
 import { loadStoryboardProject, storyboardProjectId } from './storyboard-project-store';
+import { buildStoryboardTimeline } from './storyboard-timeline-adapter';
 import {
-	buildStoryboardTimeline,
-	normalizeNarrationDurations,
-} from './storyboard-timeline-adapter';
+	restoreStoryboardTimeline,
+	hasInvalidStoryboardTiming,
+} from './storyboard-timing-recovery';
 import { StoryboardJobStatus } from './StoryboardJobStatus';
 import { StoryboardPageRail } from './StoryboardPageRail';
 import { StoryboardPreview } from './StoryboardPreview';
 import { StoryboardScriptPanel } from './StoryboardScriptPanel';
 import { StoryboardStudioHeader } from './StoryboardStudioHeader';
+import { StoryboardStudioLayout } from './StoryboardStudioLayout';
 import type { TimelineModel } from './timeline';
 import { useStoryboardAutosave } from './use-storyboard-autosave';
-import { isStoryboardJobActive, useStoryboardJobRecovery } from './use-storyboard-job-recovery';
+import { isStoryboardJobActive } from './use-storyboard-job-recovery';
 import {
 	useStoryboardPlayback,
 	useStoryboardPlaybackKeys,
@@ -33,8 +38,11 @@ import {
 } from './use-storyboard-playback';
 import { useStoryboardShots } from './use-storyboard-shots';
 import { useStoryboardTimelineEdits } from './use-storyboard-timeline-edits';
+import { useStoryboardVideoJob } from './use-storyboard-video-job';
+import { useStudioNarration } from './use-studio-narration';
 
 interface StoryboardStudioProps {
+	projectKey?: string;
 	fileName?: string;
 	slides: PptxSlide[];
 	templateElementsBySlideId: Record<string, PptxElement[]>;
@@ -42,10 +50,20 @@ interface StoryboardStudioProps {
 	scriptEndpoint?: string;
 	ttsEndpoint?: string;
 	jobEndpoint?: string;
+	autoGenerate?: boolean;
+	autoGenerateOptions?: StoryboardAutoGenerateOptions;
+	onGenerationProgress?: (progress: {
+		stage: string;
+		progress: number;
+		status: string;
+		jobId?: string;
+		terminal?: boolean;
+	}) => void;
 	onClose: () => void;
 }
 
 export function StoryboardStudio({
+	projectKey,
 	fileName,
 	slides,
 	templateElementsBySlideId,
@@ -53,12 +71,15 @@ export function StoryboardStudio({
 	scriptEndpoint,
 	ttsEndpoint,
 	jobEndpoint,
+	autoGenerate = false,
+	autoGenerateOptions,
+	onGenerationProgress,
 	onClose,
 }: StoryboardStudioProps): React.ReactElement {
 	const generatedShots = useStoryboardShots(slides);
 	const projectId = useMemo(
-		() => storyboardProjectId(fileName || 'presentation.pptx', generatedShots),
-		[fileName, generatedShots],
+		() => storyboardProjectId(projectKey ?? (fileName || 'presentation.pptx'), generatedShots),
+		[fileName, generatedShots, projectKey],
 	);
 	const restored = useMemo(() => loadStoryboardProject(projectId), [projectId]);
 	// Target labels resolve once per slides/template change; the restore effect
@@ -76,27 +97,72 @@ export function StoryboardStudio({
 	const [shots, setShots] = useState<StoryboardShot[]>(restored?.shots ?? generatedShots);
 	const [timeline, setTimeline] = useState<TimelineModel>(() =>
 		restored
-			? normalizeNarrationDurations(restored.timeline, restored.shots)
+			? restoreStoryboardTimeline(restored, generatedShots)
 			: buildStoryboardTimeline(generatedShots, { resolveTargetLabel }),
 	);
 	const [selectedShotId, setSelectedShotId] = useState(generatedShots[0]?.id ?? '');
 	const [selectedClipId, setSelectedClipId] = useState<string | undefined>(undefined);
-	const [exporting, setExporting] = useState(false);
-	const [exportStatus, setExportStatus] = useState('');
-	const disposedRef = useRef(false);
-	useEffect(() => () => void (disposedRef.current = true), []);
-	const [renderJob, setRenderJob] = useState<StoryboardJobProgress | null>(
-		restored?.lastJob ?? null,
-	);
+	const initialExportStatus =
+		restored && hasInvalidStoryboardTiming(restored.timeline)
+			? '检测到异常时间轴，已尝试备份并重建时序；讲稿保留，手动时间位置恢复默认。'
+			: '';
 	const [voiceType, setVoiceType] = useState(101001);
 	const [voiceSpeed, setVoiceSpeed] = useState(0);
 	const [audioPreviews, setAudioPreviews] = useState<
 		Record<string, { url: string; durationMs: number; taskId: string }>
 	>({});
-	useStoryboardJobRecovery(jobEndpoint, renderJob, setRenderJob);
+	const video = useStoryboardVideoJob({
+		endpoint: jobEndpoint,
+		fileName,
+		shots:
+			autoGenerate && typeof autoGenerateOptions?.subtitlesEnabled === 'boolean'
+				? shots.map((shot) => ({ ...shot, subtitlesEnabled: autoGenerateOptions.subtitlesEnabled }))
+				: shots,
+		slides,
+		templateElementsBySlideId,
+		canvasSize,
+		timeline,
+		voiceType,
+		speed: voiceSpeed,
+		initialJob: restored?.lastJob,
+		initialStatus: initialExportStatus,
+	});
+	const setRenderJob = video.setJob;
+	const autoGenerateStarted = useRef(false);
+	const [autoGeneratePhase, setAutoGeneratePhase] = useState<
+		'idle' | 'polishing' | 'ready' | 'started'
+	>('idle');
+	const autoGenerateFailed = useRef(false);
+	const generationProgressCallbackRef = useRef(onGenerationProgress);
+	generationProgressCallbackRef.current = onGenerationProgress;
+	const lastGenerationProgress = useRef(0);
+	const lastGenerationPayload = useRef('');
+	const reportGenerationProgress = useCallback(
+		(progress: {
+			stage: string;
+			progress: number;
+			status: string;
+			jobId?: string;
+			terminal?: boolean;
+		}) => {
+			const mapped = {
+				...progress,
+				progress: Math.max(
+					lastGenerationProgress.current,
+					Math.max(0, Math.min(100, Math.round(progress.progress))),
+				),
+			};
+			lastGenerationProgress.current = mapped.progress;
+			const signature = JSON.stringify(mapped);
+			if (signature === lastGenerationPayload.current) {
+				return;
+			}
+			lastGenerationPayload.current = signature;
+			generationProgressCallbackRef.current?.(mapped);
+		},
+		[],
+	);
 
-	// The playhead owns time: selection follows it, so this callback never
-	// seeks, or the auto shot advance during playback would loop.
 	const handleActiveShotChange = (shotId: string) => {
 		setSelectedShotId(shotId);
 		setSelectedClipId(undefined);
@@ -112,14 +178,19 @@ export function StoryboardStudio({
 		onShotSelected: setSelectedShotId,
 		onClipSelected: setSelectedClipId,
 	});
-	const { applyTimelineEdit, applyNarrationPreview, changeNarrationBinding, updateShot } =
-		useStoryboardTimelineEdits({
-			timeline,
-			selectedShotId,
-			generatedShots,
-			setTimeline,
-			setShots,
-		});
+	const {
+		applyTimelineEdit,
+		applyNarrationPreview,
+		changeNarrationBinding,
+		updateShot,
+		updateShots,
+	} = useStoryboardTimelineEdits({
+		timeline,
+		selectedShotId,
+		generatedShots,
+		setTimeline,
+		setShots,
+	});
 
 	useEffect(() => {
 		const saved = loadStoryboardProject(projectId);
@@ -132,72 +203,158 @@ export function StoryboardStudio({
 		);
 		setTimeline(
 			compatible && saved
-				? normalizeNarrationDurations(saved.timeline, saved.shots)
+				? restoreStoryboardTimeline(saved, generatedShots)
 				: buildStoryboardTimeline(generatedShots, { resolveTargetLabel: labelResolverRef.current }),
 		);
 		setRenderJob(compatible && saved ? (saved.lastJob ?? null) : null);
 		playbackRef.current.stop();
 		playbackRef.current.seek(0);
-	}, [generatedShots, projectId]);
+	}, [generatedShots, projectId, setRenderJob]);
 	const { saveStatus, flush, getBindingRevision } = useStoryboardAutosave({
 		projectId,
 		fileName: fileName || 'presentation.pptx',
 		shots,
 		timeline,
-		lastJob: renderJob,
+		lastJob: video.job,
 	});
+	useEffect(() => {
+		if (!generationProgressCallbackRef.current) {
+			return;
+		}
+		if (autoGenerate && (autoGeneratePhase !== 'started' || autoGenerateFailed.current)) {
+			return;
+		}
+		if (video.job) {
+			const isTerminalStage = ['completed', 'failed', 'cancelled'].includes(video.job.stage);
+			reportGenerationProgress({
+				stage: video.job.stage,
+				progress: serverGenerationProgress(video.job.progress),
+				status: video.status,
+				jobId: video.job.id,
+				terminal: isTerminalStage && !video.exporting,
+			});
+			return;
+		}
+		const capture = video.status.match(/并行捕获分镜\s+(\d+)\/(\d+)/u);
+		const progress = capture
+			? captureGenerationProgress(Number(capture[1]), Number(capture[2]))
+			: video.exporting
+				? 45
+				: 0;
+		const failed = autoGenerateStarted.current && !video.exporting && Boolean(video.status);
+		reportGenerationProgress({
+			stage: failed ? 'failed' : capture ? 'capturing' : video.exporting ? 'preparing' : 'idle',
+			progress,
+			status: video.status || (video.exporting ? '正在准备分镜' : ''),
+			terminal: failed,
+		});
+	}, [
+		autoGenerate,
+		autoGeneratePhase,
+		reportGenerationProgress,
+		video.exporting,
+		video.job,
+		video.status,
+	]);
+	useEffect(() => {
+		if (!autoGenerate || autoGeneratePhase !== 'idle' || shots.length === 0) {
+			return;
+		}
+		if (autoGenerateOptions?.polish === false) {
+			reportGenerationProgress({
+				stage: 'preparing',
+				progress: 45,
+				status: '跳过 AI 润色，正在准备分镜',
+			});
+			setAutoGeneratePhase('ready');
+			return;
+		}
+		if (!scriptEndpoint) {
+			autoGenerateFailed.current = true;
+			setAutoGeneratePhase('started');
+			reportGenerationProgress({
+				stage: 'failed',
+				progress: 0,
+				status: '未配置讲稿生成接口',
+				terminal: true,
+			});
+			return;
+		}
+		setAutoGeneratePhase('polishing');
+		void polishStoryboardForVideo({
+			endpoint: scriptEndpoint.replace(/\/generate\/?$/, '/narration'),
+			slides,
+			shots,
+			generated: generatedShots,
+			narrationOptions: autoGenerateOptions,
+			onProgress: (done, total) =>
+				reportGenerationProgress({
+					stage: 'polishing',
+					progress: polishGenerationProgress(done, total),
+					status: `AI 润色讲稿 ${done}/${total}`,
+				}),
+		})
+			.then((patches) => {
+				updateShots(patches);
+				setAutoGeneratePhase('ready');
+				return undefined;
+			})
+			.catch((error) => {
+				autoGenerateFailed.current = true;
+				setAutoGeneratePhase('started');
+				reportGenerationProgress({
+					stage: 'failed',
+					progress: 0,
+					status: error instanceof Error ? error.message : 'AI 讲稿润色失败',
+					terminal: true,
+				});
+			});
+	}, [
+		autoGenerate,
+		autoGenerateOptions,
+		autoGeneratePhase,
+		generatedShots,
+		reportGenerationProgress,
+		scriptEndpoint,
+		shots,
+		slides,
+		updateShots,
+	]);
+	useEffect(() => {
+		if (
+			!autoGenerate ||
+			autoGeneratePhase !== 'ready' ||
+			autoGenerateStarted.current ||
+			!jobEndpoint
+		) {
+			return;
+		}
+		autoGenerateStarted.current = true;
+		setAutoGeneratePhase('started');
+		stop();
+		const flushed = flush();
+		void video.generate(flushed?.bindingRevision ?? getBindingRevision());
+	}, [autoGenerate, autoGeneratePhase, flush, getBindingRevision, jobEndpoint, stop, video]);
 
 	const selectedShot = shots.find((shot) => shot.id === selectedShotId) ?? shots[0];
+	const narration = useStudioNarration({
+		scriptEndpoint,
+		slides,
+		shots,
+		generated: generatedShots,
+		selected: selectedShot,
+		updateShot,
+		updateShots,
+		setAudioPreviews,
+	});
 	const narrationClip = selectedShot ? narrationClipForShot(timeline, selectedShot.id) : undefined;
 	const sourceSlide = selectedShot ? slides[selectedShot.slideIndex] : slides[0];
 	const selectedSlide =
 		selectedShot && sourceSlide ? storyboardSlideForShot(sourceSlide, selectedShot) : sourceSlide;
 
-	const generateVideo = async () => {
-		if (!selectedShot || exporting || !jobEndpoint) {
-			return;
-		}
-		stop();
-		setExporting(true);
-		try {
-			const flushed = flush(); // 冲刷防抖窗口：revision 回执与导出的绑定模型同批。
-			await runStoryboardExport({
-				endpoint: jobEndpoint,
-				fileName: fileName || 'presentation.pptx',
-				shots,
-				slides,
-				templateElementsBySlideId,
-				canvasSize,
-				voiceType,
-				speed: voiceSpeed,
-				timeline,
-				bindingRevision: flushed?.bindingRevision ?? getBindingRevision(),
-				isDisposed: () => disposedRef.current,
-				onJob: setRenderJob,
-				onStatus: setExportStatus,
-			});
-		} catch (error) {
-			setExportStatus(error instanceof Error ? error.message : '视频生成失败');
-		} finally {
-			setExporting(false);
-		}
-	};
-	const cancelVideo = async () => {
-		if (!jobEndpoint || !renderJob || !renderJob.jobToken) {
-			return;
-		}
-		await cancelStoryboardRenderJob(jobEndpoint, renderJob.id, renderJob.jobToken);
-		setExportStatus(`正在取消任务 ${renderJob.id.slice(0, 8)}`);
-	};
-
 	return (
-		<div className='fixed inset-0 z-[300] flex flex-col bg-[#f4f5f8] text-slate-900'>
-			{renderJob && (
-				<StoryboardJobStatus
-					job={renderJob}
-					onCancel={isStoryboardJobActive(renderJob) ? cancelVideo : undefined}
-				/>
-			)}
+		<div className='fixed inset-0 z-[300] flex flex-col bg-[#101117] text-slate-100'>
+			{narration.dialog}
 			<StoryboardStudioHeader
 				fileName={fileName}
 				projectId={projectId}
@@ -205,27 +362,38 @@ export function StoryboardStudio({
 				shotCount={shots.length}
 				durationLabel={formatStoryboardTime(timeline.durationMs)}
 				saveStatus={saveStatus}
-				exportStatus={exportStatus}
-				exporting={exporting}
+				exportStatus={video.status}
+				exporting={video.exporting}
+				jobStatus={
+					video.job ? (
+						<StoryboardJobStatus
+							job={video.job}
+							onCancel={isStoryboardJobActive(video.job) ? () => void video.cancel() : undefined}
+						/>
+					) : undefined
+				}
 				canGenerate={Boolean(jobEndpoint)}
-				canCancel={isStoryboardJobActive(renderJob)}
+				canCancel={isStoryboardJobActive(video.job)}
 				onClose={onClose}
-				onGenerate={() => void generateVideo()}
-				onCancel={() => void cancelVideo()}
+				onGenerate={() => {
+					stop();
+					const flushed = flush();
+					void video.generate(flushed?.bindingRevision ?? getBindingRevision());
+				}}
+				onCancel={() => void video.cancel()}
 			/>
 
-			<div className='flex min-h-0 flex-1'>
-				<StoryboardPageRail
-					slides={slides}
-					shots={shots}
-					selectedShot={selectedShot}
-					templateElementsBySlideId={templateElementsBySlideId}
-					canvasSize={canvasSize}
-					onSelectShot={selectShot}
-				/>
-
-				<div className='flex min-w-0 flex-1 flex-col'>
-					<div className='flex min-h-0 flex-1'>
+			<StoryboardStudioLayout
+				workspace={
+					<>
+						<StoryboardPageRail
+							slides={slides}
+							shots={shots}
+							selectedShot={selectedShot}
+							templateElementsBySlideId={templateElementsBySlideId}
+							canvasSize={canvasSize}
+							onSelectShot={selectShot}
+						/>
 						{selectedSlide && selectedShot && (
 							<StoryboardPreview
 								slide={selectedSlide}
@@ -241,13 +409,23 @@ export function StoryboardStudio({
 								}}
 								progressMs={playheadMs}
 								durationMs={timeline.durationMs}
+								subtitleText={
+									selectedShot.subtitlesEnabled === false ? undefined : selectedShot.script
+								}
 							/>
 						)}
 						{sourceSlide && selectedShot && (
 							<StoryboardScriptPanel
 								shot={selectedShot}
 								slide={sourceSlide}
-								scriptEndpoint={scriptEndpoint}
+								onGenerateNarration={() => {
+									stop();
+									narration.open();
+								}}
+								scriptProtected={narration.scriptProtected}
+								onScriptProtectionChange={(scriptLocked) =>
+									updateShot(selectedShot.id, { scriptLocked })
+								}
 								ttsEndpoint={ttsEndpoint}
 								voiceType={voiceType}
 								speed={voiceSpeed}
@@ -263,14 +441,7 @@ export function StoryboardStudio({
 									setVoiceSpeed(value);
 									setAudioPreviews({});
 								}}
-								onScriptChange={(script) => {
-									updateShot(selectedShot.id, { script });
-									setAudioPreviews((current) => {
-										const next = { ...current };
-										delete next[selectedShot.id];
-										return next;
-									});
-								}}
+								onScriptChange={narration.changeScript}
 								onSubtitlesEnabledChange={(enabled) =>
 									updateShot(selectedShot.id, { subtitlesEnabled: enabled })
 								}
@@ -280,7 +451,9 @@ export function StoryboardStudio({
 								}}
 							/>
 						)}
-					</div>
+					</>
+				}
+				timeline={
 					<MultiTrackTimeline
 						timeline={timeline}
 						selectedSourceId={selectedShot?.id}
@@ -292,9 +465,10 @@ export function StoryboardStudio({
 						onSelectClip={selectClip}
 						onSeek={seek}
 						onPlayAll={() => playAll(shots[0]?.id ?? '')}
+						height='100%'
 					/>
-				</div>
-			</div>
+				}
+			/>
 		</div>
 	);
 }

@@ -15,7 +15,7 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, vi, it } from 'vitest';
 
 import { MultiTrackTimeline } from './MultiTrackTimeline';
 import {
@@ -158,7 +158,7 @@ function findByText(text: string): HTMLElement | null {
 }
 
 function scroller(): Element {
-	const found = container.querySelector('.overflow-auto');
+	const found = container.querySelector('[data-timeline-scroll-viewport], .overflow-auto');
 	if (!found) {
 		throw new Error('missing timeline scroller');
 	}
@@ -1036,5 +1036,52 @@ describe('multiTrackTimeline context menu', () => {
 		expect(menu).not.toBeNull();
 		expect(Number.parseFloat(menu.style.left)).toBeLessThanOrEqual(window.innerWidth - 176);
 		expect(Number.parseFloat(menu.style.top)).toBeLessThan(window.innerHeight);
+	});
+
+	it('turns a vertical wheel gesture into horizontal timeline scrolling', () => {
+		const timeline = baseTimeline(animationClip('anim-1', 2000), narrationClip('narr-1', 2000));
+		act(() => {
+			root.render(
+				<MultiTrackTimeline
+					timeline={timeline}
+					onChange={() => {}}
+					onSelectSource={() => {}}
+					onPlayAll={() => {}}
+				/>,
+			);
+		});
+		const viewport = scroller() as HTMLElement;
+		Object.defineProperties(viewport, {
+			clientWidth: { configurable: true, value: 600 },
+			scrollWidth: { configurable: true, value: 1800 },
+		});
+		viewport.scrollLeft = 120;
+		const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 90 });
+		act(() => viewport.dispatchEvent(wheel));
+		expect(viewport.scrollLeft).toBe(210);
+		expect(wheel.defaultPrevented).toBeTruthy();
+	});
+
+	it('leaves page scrolling alone when the timeline has no horizontal overflow', () => {
+		const timeline = baseTimeline(animationClip('anim-1', 2000), narrationClip('narr-1', 2000));
+		act(() => {
+			root.render(
+				<MultiTrackTimeline
+					timeline={timeline}
+					onChange={() => {}}
+					onSelectSource={() => {}}
+					onPlayAll={() => {}}
+				/>,
+			);
+		});
+		const viewport = scroller() as HTMLElement;
+		Object.defineProperties(viewport, {
+			clientWidth: { configurable: true, value: 900 },
+			scrollWidth: { configurable: true, value: 900 },
+		});
+		const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 90 });
+		act(() => viewport.dispatchEvent(wheel));
+		expect(viewport.scrollLeft).toBe(0);
+		expect(wheel.defaultPrevented).toBeFalsy();
 	});
 });

@@ -540,6 +540,13 @@ describe('storyboardScriptPanel binding + duration feedback', () => {
 
 	it('routes binding edits from the embedded editor to onBindingChange', () => {
 		renderPanel('x'.repeat(45), narrationClip());
+		const animationTab = Array.from(container.querySelectorAll('button')).find((button) =>
+			button.textContent?.includes('动画'),
+		);
+		expect(animationTab).toBeTruthy();
+		act(() => {
+			(animationTab as HTMLButtonElement).click();
+		});
 		expect(includesText('动画绑定')).toBeTruthy();
 		setSelectValue(findAnchorSelect(), 'animation-a1');
 		expect(lastChange()).toStrictEqual(

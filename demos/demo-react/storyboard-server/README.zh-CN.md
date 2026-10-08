@@ -44,12 +44,27 @@ bun run demo -- --host 127.0.0.1 --port 4173
 不要复用 COS 或其他服务的长期密钥。正式环境应通过密钥管理系统注入仅允许
 `tts:TextToVoice` 的独立凭证。
 
+阿里云百炼 Qwen-Audio-TTS 模式：
+
+修改版启动脚本会自动读取 `D:\1AAAworkproject\pptx-storyboard-local\tts.local.ps1`（可由同目录的 `tts.local.ps1.example` 复制而来）。
+
+```powershell
+$env:STORYBOARD_TTS_PROVIDER = 'aliyun'
+$env:ALIYUN_TTS_API_KEY = '你的百炼API Key'
+$env:ALIYUN_TTS_BASE_URL = 'https://llm-xxxx.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'
+$env:ALIYUN_TTS_MODEL = 'qwen-audio-3.0-tts-flash'
+$env:ALIYUN_TTS_VOICE = 'longanhuan_v3.6'
+```
+
+服务端会从兼容地址中识别工作空间域名，并调用官方 `/api/v1/services/audio/tts/SpeechSynthesizer` 接口。密钥只在服务端使用，不会发给浏览器。也可以在入口页点击“语音服务配置”修改并测试。
+
 ## 并发参数
 
 | 环境变量                            | 默认行为                       | 上限   |
 | ----------------------------------- | ------------------------------ | ------ |
 | `STORYBOARD_JOB_CONCURRENCY`        | 同时执行 1 个整片任务          | 3      |
 | `STORYBOARD_TTS_CONCURRENCY`        | 按 CPU 自动取 2–6              | 配置值 |
+| `STORYBOARD_ALIYUN_TTS_CONCURRENCY` | 阿里云配音默认并行 3 路        | 4      |
 | `STORYBOARD_TTS_CHUNK_CONCURRENCY`  | 单段长文本并行 4 路            | 6      |
 | `STORYBOARD_TTS_GLOBAL_CONCURRENCY` | 全进程腾讯请求总闸门           | 见实现 |
 | `STORYBOARD_RENDER_CONCURRENCY`     | CPU 最多 4 路，NVENC 最多 8 路 | 4/8    |

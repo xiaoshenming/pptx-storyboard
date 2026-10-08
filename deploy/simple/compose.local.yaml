@@ -1,0 +1,42 @@
+name: pptx-storyboard-local
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/simple/Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_PASSWORD: ${APP_PASSWORD:?Set APP_PASSWORD in the local env file}
+      APP_PASSWORD_MIN_LENGTH: '8'
+      APP_SESSION_SECRET: ${APP_SESSION_SECRET:?Set APP_SESSION_SECRET in the local env file}
+      APP_SECURE_COOKIE: '0'
+      STORYBOARD_SERVICE_CONFIG_PATH: /data/service-config.json
+      STORYBOARD_TTS_PROVIDER: edge
+      STORYBOARD_TTS_EDGE: '1'
+      STORYBOARD_EDGE_TTS_COMMAND: /opt/edge-tts/bin/python
+      STORYBOARD_GPU_ENCODING: '0'
+      STORYBOARD_AI_CONCURRENCY: '3'
+      STORYBOARD_ALIYUN_TTS_CONCURRENCY: '3'
+      STORYBOARD_JOB_CONCURRENCY: '1'
+      STORYBOARD_RENDER_CONCURRENCY: '2'
+      TMPDIR: /data/tmp
+    ports:
+      - '127.0.0.1:${LOCAL_PORT:-4173}:4173'
+    volumes:
+      - storyboard_data:/data
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'bun',
+          '-e',
+          "const r=await fetch('http://127.0.0.1:4173/auth/status'); const s=await r.json(); process.exit(r.ok && s.enabled ? 0 : 1)",
+        ]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  storyboard_data:
